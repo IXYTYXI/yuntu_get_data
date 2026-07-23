@@ -1,0 +1,32 @@
+{
+  "pageUrlPrefix": "https://yuntu.oceanengine.com/",
+  "resultLimit": 5,
+  "output": {
+    "format": "jsonl",
+    "path": "output/materials.jsonl"
+  },
+  "filters": [
+    {
+      "triggerSelector": "[data-testid=\"material-filter\"]",
+      "optionSelector": "[data-testid=\"material-filter-option\"]"
+    }
+  ],
+  "selectors": {
+    "resultCard": "[data-testid=\"material-card\"]",
+    "detailPanel": "[data-testid=\"material-detail-panel\"]",
+    "closeDetail": "[data-testid=\"close-material-detail\"]",
+    "player": "video",
+    "playButton": "[data-testid=\"play-button\"]",
+    "fields": {
+      "materialId": "[data-testid=\"material-id\"]",
+      "title": "[data-testid=\"material-title\"]",
+      "duration": "[data-testid=\"material-duration\"]",
+      "launchDate": "[data-testid=\"material-launch-date\"]",
+      "industry": "[data-testid=\"material-industry\"]",
+      "touchpoints": "[data-testid=\"material-touchpoints\"]",
+      "metrics": "[data-testid=\"material-metrics\"]",
+      "script": "[data-testid=\"material-script\"]",
+      "analysis": "[data-testid=\"material-analysis\"]"
+    }
+  }
+}
