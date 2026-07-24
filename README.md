@@ -1,6 +1,6 @@
 # Yuntu visible-UI collector
 
-This first-release collector attaches to a Chrome window that you already opened and signed in to manually. It gathers only information exposed through the configured, visible Yuntu UI and writes local JSONL or CSV output.
+This collector attaches to a Chrome window that you already opened and signed in to manually. It gathers information exposed through the configured, visible Yuntu UI, verifies playback, downloads verified player media to disk, and writes local JSONL or CSV metadata output.
 
 ## Setup
 
@@ -22,7 +22,7 @@ On macOS, use:
 open -na "Google Chrome" --args --remote-debugging-port=9222
 ```
 
-In that Chrome window, open Yuntu and sign in yourself. For the safest workflow, keep this debugging window to one Yuntu tab. The collector does not sign in, navigate to a page, read cookies or storage, or close Chrome; it only disconnects its own CDP client when finished.
+In that Chrome window, open Yuntu and sign in yourself. For the safest workflow, keep this debugging window to one Yuntu tab. The collector does not sign in, navigate to a page, read cookies or storage directly, or close Chrome; it only disconnects its own CDP client when finished.
 
 Copy the example configuration and adapt its selectors to the currently visible Yuntu UI:
 
@@ -30,7 +30,7 @@ Copy the example configuration and adapt its selectors to the currently visible 
 cp config.example.json config.json
 ```
 
-Use selectors that identify visible filter controls, result cards, the detail panel, its player/play control, and visible text fields. Keep `pageUrlPrefix` on the trusted Yuntu HTTPS origin and choose a safe relative output path.
+Use selectors that identify visible filter controls, result cards, the detail panel, its player/play control, and visible text fields. Keep `pageUrlPrefix` on the trusted Yuntu HTTPS origin and choose safe relative output paths.
 
 Run the collector against the already-open debugging instance:
 
@@ -46,7 +46,7 @@ npm start -- --config config.json --cdp-url http://127.0.0.1:9222 --page-index 0
 
 The tool does not list tab URLs to help choose an index, because that could expose unrelated tabs. Prefer the one-tab window when the index is not already known.
 
-Use `--dry-run` to run the same visible filtering, detail collection, and playback-verification workflow without invoking any future downloader:
+Use `--dry-run` to collect metadata and verify playback without downloading videos:
 
 ```sh
 npm start -- --config config.json --cdp-url http://127.0.0.1:9222 --dry-run
@@ -54,25 +54,29 @@ npm start -- --config config.json --cdp-url http://127.0.0.1:9222 --dry-run
 
 ## Output
 
-The `output` object in the configuration controls the local format and path:
+The `output` object controls metadata format and path:
 
 - `jsonl` writes one material record per line, which is convenient for streaming and further processing.
 - `csv` writes a header row plus one material record per row for spreadsheet import.
 
-Records contain visible metadata, visible metrics text, playback status, and the fixed v1 download status `not-authorized` / `DOWNLOAD_NOT_AUTHORIZED`. No raw media URL is persisted.
+The `download` object controls where verified videos are saved:
+
+- `directory` is a safe relative folder such as `output/videos`.
+- `filenameExtension` defaults to `mp4`.
+
+After playback is verified, the collector reads the visible player source and downloads the media through the authenticated browser context. Records contain visible metadata, playback status, and a relative download path or failure code. No raw media URL is persisted.
 
 ## Selector maintenance
 
 Yuntu UI selectors can become fragile when the site layout or DOM changes. If a configured control is hidden, missing, or no longer matches the intended visible element, the collector records a safe selector-related error for that material and continues with later materials where possible. Review and update `config.json` after UI changes.
 
-## First-release limits
+## Limits
 
 This version does **not**:
 
-- download video;
-- extract media locations;
-- access cookies or browser storage;
+- persist media URLs in metadata output;
+- read cookies or browser storage directly;
 - write to Feishu Base; or
-- use direct media or download APIs.
+- download HLS (`.m3u8`) streams.
 
-Before any future downloader is implemented, obtain approval for the platform's official export workflow. Until then, this collector remains limited to visible UI collection and local JSONL/CSV output.
+Obtain approval for any workflow that bypasses the platform's visible UI controls.

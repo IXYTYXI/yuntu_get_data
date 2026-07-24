@@ -45,12 +45,22 @@ class FakeLocator {
   }
 
   nth(index: number): Locator {
-    return (this.items[index] ?? new FakeLocator(false)) as unknown as Locator;
+    if (this.items.length > 0) {
+      return (this.items[index] ?? new FakeLocator(false)) as unknown as Locator;
+    }
+
+    return index === 0
+      ? (this as unknown as Locator)
+      : (new FakeLocator(false) as unknown as Locator);
+  }
+
+  first(): Locator {
+    return this as unknown as Locator;
   }
 
   async count(): Promise<number> {
     this.onCount?.();
-    return this.items.length;
+    return this.items.length > 0 ? this.items.length : 1;
   }
 
   async isVisible(): Promise<boolean> {
@@ -98,6 +108,9 @@ class FakeLocator {
 class FakePage {
   readonly locators = new Map<string, FakeLocator>();
   readonly waits: number[] = [];
+  readonly keyboard = {
+    async press(_key: string): Promise<void> {},
+  };
   onWait?: (milliseconds: number) => void;
 
   constructor(private location = TRUSTED_PAGE_URL) {}
@@ -272,6 +285,7 @@ test("collects visible detail text from the configured panel", async () => {
     touchpoints: "Feed",
     metrics: { visibleText: "CTR: 4.2%" },
     script: "Visible script",
+    transcript: "Visible script",
     analysis: "Visible analysis",
   });
 });

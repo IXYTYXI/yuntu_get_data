@@ -11,18 +11,24 @@ import type {
 
 const csvHeader = [
   "materialId",
+  "brandName",
   "title",
-  "duration",
   "launchDate",
+  "exposure",
+  "threeSecondCompletionRate",
+  "ctr",
+  "duration",
   "industry",
   "touchpoints",
   "metrics",
   "script",
+  "transcript",
   "analysis",
   "playbackState",
   "playbackCode",
   "downloadState",
   "downloadCode",
+  "downloadPath",
   "errorCodes",
 ] as const;
 
@@ -43,18 +49,24 @@ export function serializeCsv(records: MaterialRecord[]): string {
     const projected = projectRecord(record);
     return [
       projected.materialId,
+      projected.brandName ?? "",
       projected.title ?? "",
-      projected.duration ?? "",
       projected.launchDate ?? "",
+      projected.exposure ?? "",
+      projected.threeSecondCompletionRate ?? "",
+      projected.ctr ?? "",
+      projected.duration ?? "",
       projected.industry ?? "",
       projected.touchpoints ?? "",
       JSON.stringify(projected.metrics),
       projected.script ?? "",
+      projected.transcript ?? "",
       projected.analysis ?? "",
       projected.playback.state,
       projected.playback.code ?? "",
       projected.download.state,
-      projected.download.code,
+      downloadCode(projected.download),
+      downloadPath(projected.download),
       projected.errors?.map((error) => error.code).join(",") ?? "",
     ]
       .map(escapeCsv)
@@ -88,14 +100,30 @@ export async function writeOutput(
 function projectRecord(record: MaterialRecord): MaterialRecord {
   return {
     materialId: sanitizeVisibleString(record.materialId),
+    ...(typeof record.brandName === "string"
+      ? { brandName: sanitizeVisibleString(record.brandName) }
+      : {}),
     ...(typeof record.title === "string"
       ? { title: sanitizeVisibleString(record.title) }
       : {}),
-    ...(typeof record.duration === "string"
-      ? { duration: sanitizeVisibleString(record.duration) }
-      : {}),
     ...(typeof record.launchDate === "string"
       ? { launchDate: sanitizeVisibleString(record.launchDate) }
+      : {}),
+    ...(typeof record.exposure === "string"
+      ? { exposure: sanitizeVisibleString(record.exposure) }
+      : {}),
+    ...(typeof record.threeSecondCompletionRate === "string"
+      ? {
+          threeSecondCompletionRate: sanitizeVisibleString(
+            record.threeSecondCompletionRate,
+          ),
+        }
+      : {}),
+    ...(typeof record.ctr === "string"
+      ? { ctr: sanitizeVisibleString(record.ctr) }
+      : {}),
+    ...(typeof record.duration === "string"
+      ? { duration: sanitizeVisibleString(record.duration) }
       : {}),
     ...(typeof record.industry === "string"
       ? { industry: sanitizeVisibleString(record.industry) }
@@ -106,6 +134,9 @@ function projectRecord(record: MaterialRecord): MaterialRecord {
     metrics: projectMetrics(record.metrics),
     ...(typeof record.script === "string"
       ? { script: sanitizeVisibleString(record.script) }
+      : {}),
+    ...(typeof record.transcript === "string"
+      ? { transcript: sanitizeVisibleString(record.transcript) }
       : {}),
     ...(typeof record.analysis === "string"
       ? { analysis: sanitizeVisibleString(record.analysis) }
@@ -145,19 +176,51 @@ function projectPlayback(
 function projectDownload(
   download: MaterialRecord["download"],
 ): MaterialRecord["download"] {
-  const state =
-    download?.state === "not-authorized"
-      ? download.state
-      : "not-authorized";
-  const code =
-    download?.code === "DOWNLOAD_NOT_AUTHORIZED"
-      ? download.code
-      : "DOWNLOAD_NOT_AUTHORIZED";
+  if (download?.state === "downloaded") {
+    return {
+      state: "downloaded",
+      path: sanitizeVisibleString(download.path),
+    };
+  }
+
+  if (download?.state === "skipped" && download.code === "DRY_RUN") {
+    return { state: "skipped", code: "DRY_RUN" };
+  }
+
+  if (download?.state === "failed") {
+    return {
+      state: "failed",
+      code: isDownloadFailureCode(download.code)
+        ? download.code
+        : "DOWNLOAD_FAILED",
+    };
+  }
 
   return {
-    state,
-    code,
+    state: "failed",
+    code: "DOWNLOAD_FAILED",
   };
+}
+
+function downloadCode(download: MaterialRecord["download"]): string {
+  return download.state === "failed" || download.state === "skipped"
+    ? download.code
+    : "";
+}
+
+function downloadPath(download: MaterialRecord["download"]): string {
+  return download.state === "downloaded" ? download.path : "";
+}
+
+function isDownloadFailureCode(
+  value: unknown,
+): value is Extract<MaterialRecord["download"], { state: "failed" }>["code"] {
+  return (
+    value === "DOWNLOAD_FAILED" ||
+    value === "MEDIA_URL_UNAVAILABLE" ||
+    value === "UNSUPPORTED_MEDIA_URL" ||
+    value === "PLAYBACK_NOT_VERIFIED"
+  );
 }
 
 function isPlaybackState(

@@ -12,9 +12,19 @@ import {
   type DownloadStatus,
   type MaterialRecord,
 } from "./domain.js";
-import { DisabledAuthorizedDownloader } from "./download/authorized-downloader.js";
+import {
+  mediaUnavailableDownloadStatus,
+  playbackNotVerifiedDownloadStatus,
+  skippedDownloadStatus,
+} from "./download/authorized-downloader.js";
+import { BrowserVideoDownloader } from "./download/browser-video-downloader.js";
 import { writeOutput } from "./output.js";
 import { MaterialDetail } from "./ui/material-detail.js";
+import {
+  filterVideoListRows,
+  readVideoListRows,
+  type ParsedVideoListRow,
+} from "./ui/video-list.js";
 import { findYuntuPage, YuntuPage } from "./ui/yuntu-page.js";
 
 const DEFAULT_CDP_URL = "http://127.0.0.1:9222";
@@ -36,10 +46,11 @@ export const CLI_HELP_TEXT = [
   "  --config <path>    Required local JSON collection configuration.",
   `  --cdp-url <url>   Chrome DevTools endpoint (default: ${DEFAULT_CDP_URL}).`,
   "  --page-index <n>  Required when the debugging browser has multiple tabs.",
-  "  --dry-run          Collect visible UI data without invoking a future downloader.",
+  "  --dry-run          Collect visible metadata without downloading videos.",
   "  --help             Show this help text.",
   "",
-  "v1 does NOT download video, extract media locations, access cookies/storage, or write Feishu Base.",
+  "Downloads verified player media into the configured download.directory.",
+  "Does not persist media URLs, access cookies/storage directly, or write Feishu Base.",
 ].join("\n");
 
 export interface ParsedCliArgs {
@@ -172,17 +183,23 @@ export async function main(
         );
 
         await yuntuPage.applyVisibleFilters();
-        const materialCount = Math.min(
-          config.resultLimit,
-          await yuntuPage.visibleMaterialCount(),
-        );
-        const records = await collectMaterials(
-          page,
-          yuntuPage,
-          config,
-          materialCount,
-          options.dryRun,
-        );
+        const records = config.criteria
+          ? await collectMaterialsWithCriteria(
+              page,
+              yuntuPage,
+              config,
+              options.dryRun,
+            )
+          : await collectMaterials(
+              page,
+              yuntuPage,
+              config,
+              Math.min(
+                config.resultLimit,
+                await yuntuPage.visibleMaterialCount(),
+              ),
+              options.dryRun,
+            );
 
         await writeOutput(records, config.output);
         return 0;
@@ -194,6 +211,47 @@ export async function main(
   }
 }
 
+async function collectMaterialsWithCriteria(
+  page: Page,
+  yuntuPage: YuntuPage,
+  config: CollectionConfig,
+  dryRun: boolean,
+): Promise<MaterialRecord[]> {
+  const criteria = config.criteria;
+  if (criteria === undefined) {
+    return [];
+  }
+
+  const records: MaterialRecord[] = [];
+  await yuntuPage.applyDateRangeDays(criteria.dateRangeDays);
+  for (const brandName of criteria.brands) {
+    await yuntuPage.searchCompetitorBrand(brandName);
+    const rows = filterVideoListRows(await readVideoListRows(page), {
+      minExposure: criteria.minExposure,
+      minThreeSecondCompletionRate: criteria.minThreeSecondCompletionRate,
+      minCtr: criteria.minCtr,
+      maxResults: Math.min(criteria.maxResultsPerBrand, config.resultLimit),
+    });
+
+    for (const row of rows) {
+      records.push(
+        await collectMaterial(
+          page,
+          yuntuPage,
+          config,
+          row.rowIndex,
+          dryRun,
+          dryRun ? undefined : new BrowserVideoDownloader(page, config.download),
+          brandName,
+          row,
+        ),
+      );
+    }
+  }
+
+  return records;
+}
+
 async function collectMaterials(
   page: Page,
   yuntuPage: YuntuPage,
@@ -201,7 +259,9 @@ async function collectMaterials(
   materialCount: number,
   dryRun: boolean,
 ): Promise<MaterialRecord[]> {
-  const downloader = dryRun ? undefined : new DisabledAuthorizedDownloader();
+  const downloader = dryRun
+    ? undefined
+    : new BrowserVideoDownloader(page, config.download);
   const records: MaterialRecord[] = [];
 
   for (let index = 0; index < materialCount; index += 1) {
@@ -211,6 +271,7 @@ async function collectMaterials(
         yuntuPage,
         config,
         index,
+        dryRun,
         downloader,
       ),
     );
@@ -224,7 +285,10 @@ async function collectMaterial(
   yuntuPage: YuntuPage,
   config: CollectionConfig,
   index: number,
-  downloader: DisabledAuthorizedDownloader | undefined,
+  dryRun: boolean,
+  downloader: BrowserVideoDownloader | undefined,
+  brandName?: string,
+  listRow?: ParsedVideoListRow,
 ): Promise<MaterialRecord> {
   let opened = false;
   let record: MaterialRecord | undefined;
@@ -241,14 +305,28 @@ async function collectMaterial(
     );
     const visibleDetails = await detail.collect();
     const playback = await detail.verifyPlayback();
-    const download = await collectDisabledDownload(
-      downloader,
-      visibleDetails.materialId,
+    const download = await collectVideoDownload(
+      detail,
+      playback,
+      listRow === undefined
+        ? visibleDetails.materialId
+        : `${brandName ?? "brand"}-${listRow.rank}`,
       visibleDetails.title,
+      dryRun,
+      downloader,
     );
 
     record = {
       ...visibleDetails,
+      ...(brandName === undefined ? {} : { brandName }),
+      ...(listRow === undefined
+        ? {}
+        : {
+            launchDate: listRow.launchDate,
+            exposure: listRow.exposureText,
+            threeSecondCompletionRate: listRow.threeSecondCompletionRateText,
+            ctr: listRow.ctrText,
+          }),
       playback,
       download,
     };
@@ -258,46 +336,66 @@ async function collectMaterial(
     if (opened) {
       try {
         await yuntuPage.closeMaterial();
-      } catch (error) {
-        failure ??= error;
+      } catch (closeError) {
+        if (failure !== undefined || record === undefined) {
+          failure ??= closeError;
+        }
       }
     }
   }
 
   return failure === undefined && record !== undefined
     ? record
-    : unavailableMaterial(index, failure);
+    : unavailableMaterial(index, failure, dryRun);
 }
 
-async function collectDisabledDownload(
-  downloader: DisabledAuthorizedDownloader | undefined,
+async function collectVideoDownload(
+  detail: MaterialDetail,
+  playback: MaterialRecord["playback"],
   materialId: string,
   title: string | undefined,
+  dryRun: boolean,
+  downloader: BrowserVideoDownloader | undefined,
 ): Promise<DownloadStatus> {
+  if (dryRun) {
+    return skippedDownloadStatus();
+  }
+
+  if (playback.state !== "verified") {
+    return playbackNotVerifiedDownloadStatus();
+  }
+
+  let videoUrl: string;
+  try {
+    videoUrl = await detail.getVideoSourceUrl();
+  } catch {
+    return mediaUnavailableDownloadStatus();
+  }
+
   if (downloader === undefined) {
-    return disabledDownloadStatus();
+    return mediaUnavailableDownloadStatus();
   }
 
   return downloader.download({
     materialId,
     ...(title === undefined ? {} : { title }),
+    videoUrl,
   });
 }
 
-function unavailableMaterial(index: number, error: unknown): MaterialRecord {
+function unavailableMaterial(
+  index: number,
+  error: unknown,
+  dryRun: boolean,
+): MaterialRecord {
   return {
     materialId: `unavailable-${index + 1}`,
     metrics: {},
     playback: { state: "unavailable" },
-    download: disabledDownloadStatus(),
+    download: dryRun
+      ? skippedDownloadStatus()
+      : mediaUnavailableDownloadStatus(),
     errors: [toSafeCollectorError(error)],
-  };
-}
-
-function disabledDownloadStatus(): DownloadStatus {
-  return {
-    state: "not-authorized",
-    code: "DOWNLOAD_NOT_AUTHORIZED",
   };
 }
 

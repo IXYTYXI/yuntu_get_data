@@ -1,22 +1,34 @@
+import type { DownloadStatus } from "../domain.js";
+
 export interface DownloadRequest {
   materialId: string;
   title?: string;
+  videoUrl?: string;
 }
 
-export interface DownloadResult {
-  state: "not-authorized";
-  code: "DOWNLOAD_NOT_AUTHORIZED";
-}
+export type DownloadResult = DownloadStatus;
 
 export interface AuthorizedDownloader {
   download(request: DownloadRequest): Promise<DownloadResult>;
 }
 
-export class DisabledAuthorizedDownloader implements AuthorizedDownloader {
-  async download(_request: DownloadRequest): Promise<DownloadResult> {
-    return {
-      state: "not-authorized",
-      code: "DOWNLOAD_NOT_AUTHORIZED",
-    };
-  }
+export function skippedDownloadStatus(): DownloadStatus {
+  return {
+    state: "skipped",
+    code: "DRY_RUN",
+  };
+}
+
+export function playbackNotVerifiedDownloadStatus(): DownloadStatus {
+  return {
+    state: "failed",
+    code: "PLAYBACK_NOT_VERIFIED",
+  };
+}
+
+export function mediaUnavailableDownloadStatus(): DownloadStatus {
+  return {
+    state: "failed",
+    code: "MEDIA_URL_UNAVAILABLE",
+  };
 }

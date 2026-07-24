@@ -16,6 +16,10 @@ const validConfig = () => ({
     format: "jsonl",
     path: "output/collection.jsonl",
   },
+  download: {
+    directory: "output/videos",
+    filenameExtension: "mp4",
+  },
   filters: [
     {
       triggerSelector: "[data-testid=industry-filter]",
@@ -241,6 +245,19 @@ test("permits only nonempty supported field selector values", () => {
     },
   });
   assert.deepEqual(config.selectors.fields, {});
+});
+
+test("requires a safe relative download directory", () => {
+  for (const directory of ["/tmp/videos", "../videos", "output/../videos"]) {
+    assert.throws(
+      () =>
+        parseCollectionConfig({
+          ...validConfig(),
+          download: { directory },
+        }),
+      /download\.directory/,
+    );
+  }
 });
 
 test("loads UTF-8 JSON and delegates validation to the parser", async (t) => {

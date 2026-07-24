@@ -30,8 +30,8 @@ const record: MaterialRecord = {
   analysis: "Visible analysis",
   playback: { state: "verified" },
   download: {
-    state: "not-authorized",
-    code: "DOWNLOAD_NOT_AUTHORIZED",
+    state: "skipped",
+    code: "DRY_RUN",
   },
   errors: [{ code: "PLAYBACK_NOT_CONFIRMED" }],
 };
@@ -71,8 +71,8 @@ const recordWithUnsafeVisibleValues: MaterialRecord = {
   analysis: "authorization=opaque-authorization",
   playback: { state: "verified" },
   download: {
-    state: "not-authorized",
-    code: "DOWNLOAD_NOT_AUTHORIZED",
+    state: "skipped",
+    code: "DRY_RUN",
   },
   errors: [
     {
@@ -172,10 +172,9 @@ const recordWithSeparatedApiKeyValues = {
 } as unknown as MaterialRecord;
 
 test("serializes one material record as newline-terminated JSONL", () => {
-  assert.equal(
-    serializeJsonl([record]),
-    `${JSON.stringify(record)}\n`,
-  );
+  const jsonl = serializeJsonl([record]);
+  assert.match(jsonl, /\n$/);
+  assert.deepEqual(JSON.parse(jsonl), JSON.parse(JSON.stringify(record)));
 });
 
 test("quotes a CSV title containing a comma", () => {
@@ -341,9 +340,9 @@ test("redacts api key forms with whitespace and punctuation separators", () => {
 test("neutralizes formulas preceded by whitespace or a BOM", () => {
   const csv = serializeCsv(recordsWithWhitespaceFormulaTitles);
 
-  assert.match(csv, /formula-tab,'\t=1\+1,/);
-  assert.match(csv, /formula-space,'  \+1,/);
-  assert.match(csv, /formula-bom,'\uFEFF@value,/);
+  assert.match(csv, /formula-tab,,'\t=1\+1,/);
+  assert.match(csv, /formula-space,,'  \+1,/);
+  assert.match(csv, /formula-bom,,'\uFEFF@value,/);
   assert.doesNotMatch(csv, /formula-tab,\t=1\+1,/);
   assert.doesNotMatch(csv, /formula-space,  \+1,/);
   assert.doesNotMatch(csv, /formula-bom,\uFEFF@value,/);
@@ -356,8 +355,8 @@ test("normalizes malicious runtime statuses and codes", () => {
 
   assert.deepEqual(serialized.playback, { state: "unavailable" });
   assert.deepEqual(serialized.download, {
-    state: "not-authorized",
-    code: "DOWNLOAD_NOT_AUTHORIZED",
+    state: "failed",
+    code: "DOWNLOAD_FAILED",
   });
   assert.deepEqual(serialized.errors, [
     { code: "SELECTOR_NOT_FOUND", message: "safe error message" },

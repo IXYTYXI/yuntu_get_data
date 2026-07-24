@@ -2,7 +2,13 @@ export type OutputFormat = "jsonl" | "csv";
 
 export type PlaybackState = "verified" | "not-confirmed" | "unavailable";
 
-export type DownloadState = "not-authorized";
+export type DownloadState = "downloaded" | "failed" | "skipped";
+
+export type DownloadFailureCode =
+  | "DOWNLOAD_FAILED"
+  | "MEDIA_URL_UNAVAILABLE"
+  | "UNSUPPORTED_MEDIA_URL"
+  | "PLAYBACK_NOT_VERIFIED";
 
 export type CollectorErrorCode =
   | "AUTH_REQUIRED"
@@ -25,10 +31,10 @@ export interface PlaybackResult {
   code?: "PLAYBACK_NOT_CONFIRMED";
 }
 
-export interface DownloadStatus {
-  state: DownloadState;
-  code: "DOWNLOAD_NOT_AUTHORIZED";
-}
+export type DownloadStatus =
+  | { state: "downloaded"; path: string }
+  | { state: "failed"; code: DownloadFailureCode }
+  | { state: "skipped"; code: "DRY_RUN" };
 
 export interface CollectorError {
   code: CollectorErrorCode;
@@ -37,17 +43,31 @@ export interface CollectorError {
 
 export interface MaterialRecord {
   materialId: string;
+  brandName?: string;
   title?: string;
   duration?: string;
   launchDate?: string;
+  exposure?: string;
+  threeSecondCompletionRate?: string;
+  ctr?: string;
   industry?: string;
   touchpoints?: string;
   metrics: Record<string, string>;
   script?: string;
+  transcript?: string;
   analysis?: string;
   playback: PlaybackResult;
   download: DownloadStatus;
   errors?: CollectorError[];
+}
+
+export interface CollectionCriteria {
+  brands: string[];
+  dateRangeDays: number;
+  maxResultsPerBrand: number;
+  minExposure: number;
+  minThreeSecondCompletionRate: number;
+  minCtr: number;
 }
 
 export interface VisibleFilterStep {
@@ -74,6 +94,11 @@ export interface CollectionConfig {
     format: OutputFormat;
     path: string;
   };
+  download: {
+    directory: string;
+    filenameExtension: string;
+  };
+  criteria?: CollectionCriteria;
   filters: VisibleFilterStep[];
   selectors: {
     resultCard: string;

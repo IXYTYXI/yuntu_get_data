@@ -3,6 +3,7 @@ import path from "node:path";
 
 import type {
   CollectionConfig,
+  CollectionCriteria,
   FieldSelectors,
   OutputFormat,
   VisibleFilterStep,
@@ -12,11 +13,14 @@ const topLevelKeys = [
   "pageUrlPrefix",
   "resultLimit",
   "output",
+  "download",
+  "criteria",
   "filters",
   "selectors",
 ] as const;
 
 const outputKeys = ["format", "path"] as const;
+const downloadKeys = ["directory", "filenameExtension"] as const;
 const filterKeys = ["triggerSelector", "optionSelector"] as const;
 const selectorKeys = [
   "resultCard",
@@ -45,9 +49,25 @@ const fieldSelectorKeys = [
   "analysis",
 ] as const;
 
+const criteriaKeys = [
+  "brands",
+  "dateRangeDays",
+  "maxResultsPerBrand",
+  "minExposure",
+  "minThreeSecondCompletionRate",
+  "minCtr",
+] as const;
+
 export function parseCollectionConfig(raw: unknown): CollectionConfig {
   const config = requirePlainObject(raw, "configuration");
-  requireExactKeys(config, topLevelKeys, "configuration");
+  requireExactKeys(config, topLevelKeys, "configuration", [
+    "pageUrlPrefix",
+    "resultLimit",
+    "output",
+    "download",
+    "filters",
+    "selectors",
+  ]);
 
   const pageUrlPrefix = readNonEmptyString(
     config.pageUrlPrefix,
@@ -59,6 +79,10 @@ export function parseCollectionConfig(raw: unknown): CollectionConfig {
     pageUrlPrefix,
     resultLimit: readPositiveInteger(config.resultLimit, "resultLimit"),
     output: parseOutput(config.output),
+    download: parseDownload(config.download),
+    ...(Object.hasOwn(config, "criteria")
+      ? { criteria: parseCriteria(config.criteria) }
+      : {}),
     filters: parseFilters(config.filters),
     selectors: parseSelectors(config.selectors),
   };
@@ -81,16 +105,82 @@ function parseOutput(value: unknown): CollectionConfig["output"] {
   }
 
   const outputPath = readNonEmptyString(output.path, "output.path");
+  validateRelativePath(outputPath, "output.path");
+
+  return { format: format as OutputFormat, path: outputPath };
+}
+
+function parseDownload(value: unknown): CollectionConfig["download"] {
+  const download = requirePlainObject(value, "download");
+  requireExactKeys(download, downloadKeys, "download", ["directory"]);
+
+  const directory = readNonEmptyString(download.directory, "download.directory");
+  validateRelativePath(directory, "download.directory");
+
+  const filenameExtension =
+    download.filenameExtension === undefined
+      ? "mp4"
+      : readNonEmptyString(
+          download.filenameExtension,
+          "download.filenameExtension",
+        );
+  if (!/^[a-z0-9]+$/i.test(filenameExtension)) {
+    throw new Error("download.filenameExtension must be alphanumeric");
+  }
+
+  return { directory, filenameExtension };
+}
+
+function parseCriteria(value: unknown): CollectionCriteria {
+  const criteria = requirePlainObject(value, "criteria");
+  requireExactKeys(criteria, criteriaKeys, "criteria");
+
+  const brands = criteria.brands;
+  if (!Array.isArray(brands) || brands.length === 0) {
+    throw new Error("criteria.brands must be a nonempty array");
+  }
+
+  return {
+    brands: brands.map((brand, index) =>
+      readNonEmptyString(brand, `criteria.brands[${index}]`),
+    ),
+    dateRangeDays: readPositiveInteger(
+      criteria.dateRangeDays,
+      "criteria.dateRangeDays",
+    ),
+    maxResultsPerBrand: readPositiveInteger(
+      criteria.maxResultsPerBrand,
+      "criteria.maxResultsPerBrand",
+    ),
+    minExposure: readPositiveInteger(
+      criteria.minExposure,
+      "criteria.minExposure",
+    ),
+    minThreeSecondCompletionRate: readRatio(
+      criteria.minThreeSecondCompletionRate,
+      "criteria.minThreeSecondCompletionRate",
+    ),
+    minCtr: readRatio(criteria.minCtr, "criteria.minCtr"),
+  };
+}
+
+function readRatio(value: unknown, name: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    throw new Error(`${name} must be a nonnegative number`);
+  }
+
+  return value;
+}
+
+function validateRelativePath(outputPath: string, name: string): void {
   if (
     path.isAbsolute(outputPath) ||
     path.win32.isAbsolute(outputPath) ||
     path.win32.parse(outputPath).root !== "" ||
     outputPath.split(/[\\/]/).includes("..")
   ) {
-    throw new Error("output.path must be a safe relative path");
+    throw new Error(`${name} must be a safe relative path`);
   }
-
-  return { format: format as OutputFormat, path: outputPath };
 }
 
 function parseFilters(value: unknown): VisibleFilterStep[] {

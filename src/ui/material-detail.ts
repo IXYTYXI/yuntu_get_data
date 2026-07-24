@@ -47,6 +47,7 @@ export interface VisibleMaterialDetails {
   touchpoints?: string;
   metrics: Record<string, string>;
   script?: string;
+  transcript?: string;
   analysis?: string;
 }
 
@@ -83,7 +84,7 @@ export class MaterialDetail {
       ...(industry === undefined ? {} : { industry }),
       ...(touchpoints === undefined ? {} : { touchpoints }),
       metrics: metrics === undefined ? {} : { visibleText: metrics },
-      ...(script === undefined ? {} : { script }),
+      ...(script === undefined ? {} : { script, transcript: script }),
       ...(analysis === undefined ? {} : { analysis }),
     };
   }
@@ -92,9 +93,8 @@ export class MaterialDetail {
     this.assertCurrentPageTrusted();
     await this.requireVisible(this.panel, "detail panel");
 
-    const player = this.panel.locator(this.selectors.player);
-    const playButton = this.panel.locator(this.selectors.playButton);
-    await this.requireVisible(player, "player");
+    const player = await this.visiblePlayer();
+    const playButton = this.panel.locator(this.selectors.playButton).first();
     await this.requireVisible(playButton, "play button");
 
     const before = await this.snapshotPlayer(player);
@@ -114,18 +114,105 @@ export class MaterialDetail {
     return result;
   }
 
-  private async readRequiredField(
-    name: keyof FieldSelectors,
-  ): Promise<string> {
-    const value = await this.readOptionalField(name);
-    if (value === undefined) {
+  async getVideoSourceUrl(): Promise<string> {
+    this.assertCurrentPageTrusted();
+    await this.requireVisible(this.panel, "detail panel");
+
+    const player = await this.visiblePlayer();
+    await this.requireVisible(player, "player");
+
+    let sourceUrl: string | null;
+    try {
+      sourceUrl = await this.guardedDomOperation(() =>
+        player.evaluate((element): string | null => {
+          if (!(element instanceof HTMLVideoElement)) {
+            return null;
+          }
+
+          const currentSrc = element.currentSrc.trim();
+          if (currentSrc.length > 0) {
+            return currentSrc;
+          }
+
+          const src = element.src.trim();
+          return src.length > 0 ? src : null;
+        }),
+      );
+    } catch (error) {
+      this.rethrowCollectorFailure(error);
       throw new CollectorFailure(
         "SELECTOR_NOT_FOUND",
-        `Configured ${name} field is not available`,
+        "Visible player source could not be read",
       );
     }
 
-    return value;
+    if (sourceUrl === null) {
+      throw new CollectorFailure(
+        "SELECTOR_NOT_FOUND",
+        "Visible player has no media source",
+      );
+    }
+
+    return sourceUrl;
+  }
+
+  private async visiblePlayer(): Promise<Locator> {
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const players = this.panel.locator(this.selectors.player);
+      let count: number;
+      try {
+        count = await this.guardedDomOperation(() => players.count());
+      } catch (error) {
+        this.rethrowCollectorFailure(error);
+        throw new CollectorFailure(
+          "SELECTOR_NOT_FOUND",
+          "Configured player selector is not available",
+        );
+      }
+
+      for (let index = 0; index < count; index += 1) {
+        const candidate = players.nth(index);
+        let visible = false;
+        try {
+          visible = await this.guardedDomOperation(() => candidate.isVisible());
+        } catch (error) {
+          this.rethrowCollectorFailure(error);
+          throw new CollectorFailure(
+            "SELECTOR_NOT_FOUND",
+            "Configured player selector is not available",
+          );
+        }
+
+        if (visible) {
+          return candidate;
+        }
+      }
+
+      await this.waitForPlaybackDelay(500);
+    }
+
+    throw new CollectorFailure(
+      "SELECTOR_NOT_FOUND",
+      "Configured player selector is not visible",
+    );
+  }
+
+  private async readRequiredField(
+    name: keyof FieldSelectors,
+  ): Promise<string> {
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const value = await this.readOptionalField(name);
+      if (value !== undefined && value !== "标题为空" && value !== "视频ID为空") {
+        return value;
+      }
+
+      await this.waitForPlaybackDelay(500);
+    }
+
+    throw new CollectorFailure(
+      "SELECTOR_NOT_FOUND",
+      `Configured ${name} field is not available`,
+    );
   }
 
   private async readOptionalField(
@@ -136,7 +223,7 @@ export class MaterialDetail {
       return undefined;
     }
 
-    const field = this.panel.locator(selector);
+    const field = this.panel.locator(selector).first();
     await this.requireVisible(field, `${name} field`);
     try {
       return await this.guardedDomOperation(() => field.innerText());
@@ -187,9 +274,15 @@ export class MaterialDetail {
   private async clickVisible(locator: Locator, name: string): Promise<void> {
     await this.requireVisible(locator, name);
     try {
-      await this.guardedDomOperation(() => locator.click());
+      await this.guardedDomOperation(() => locator.click({ timeout: 5000 }));
     } catch (error) {
       this.rethrowCollectorFailure(error);
+      try {
+        await this.guardedDomOperation(() => locator.click({ force: true, timeout: 5000 }));
+        return;
+      } catch (forcedError) {
+        this.rethrowCollectorFailure(forcedError);
+      }
       throw new CollectorFailure(
         "SELECTOR_NOT_FOUND",
         `Visible ${name} could not be clicked`,

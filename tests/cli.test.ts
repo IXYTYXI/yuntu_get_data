@@ -236,14 +236,13 @@ test("uses a fixed non-sensitive placeholder for untrusted browser locations", (
   }
 });
 
-test("documents the v1 no-download limit in the help text", () => {
+test("documents download behavior in the help text", () => {
   assert.match(CLI_HELP_TEXT, /--config/);
   assert.match(CLI_HELP_TEXT, /--cdp-url/);
   assert.match(CLI_HELP_TEXT, /--page-index/);
   assert.match(CLI_HELP_TEXT, /--dry-run/);
-  assert.match(CLI_HELP_TEXT, /does NOT download video/i);
-  assert.match(CLI_HELP_TEXT, /extract media locations/i);
-  assert.match(CLI_HELP_TEXT, /access cookies\/storage/i);
+  assert.match(CLI_HELP_TEXT, /download\.directory/i);
+  assert.match(CLI_HELP_TEXT, /Does not persist media URLs/i);
   assert.match(CLI_HELP_TEXT, /write Feishu Base/i);
 });
 

@@ -5,6 +5,10 @@
     "format": "jsonl",
     "path": "output/materials.jsonl"
   },
+  "download": {
+    "directory": "output/videos",
+    "filenameExtension": "mp4"
+  },
   "filters": [
     {
       "triggerSelector": "[data-testid=\"material-filter\"]",

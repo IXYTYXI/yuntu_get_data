@@ -5,6 +5,12 @@ import {
   type CollectionConfig,
   type VisibleFilterStep,
 } from "../domain.js";
+import {
+  dateRangeInputSelector,
+  dateRangeQuickSelectLabel,
+  inclusiveDayCount,
+  parseDateRangeValue,
+} from "./date-range.js";
 
 export const DEFAULT_YUNTU_PAGE_PREFIX = "https://yuntu.oceanengine.com/";
 export const TRUSTED_PAGE_FAILURE_MESSAGE =
@@ -140,6 +146,63 @@ export class YuntuPage {
     }
   }
 
+  async applyDateRangeDays(days: number): Promise<void> {
+    this.assertCurrentPageTrusted();
+    const quickSelectLabel = dateRangeQuickSelectLabel(days);
+    if (quickSelectLabel === null) {
+      throw new CollectorFailure(
+        "SELECTOR_NOT_FOUND",
+        "Configured date range days is not supported by the Yuntu quick select",
+      );
+    }
+
+    const picker = this.page.locator(".content-ecom-yuntu-yuntu-date-picker").first();
+    const dateInput = this.page.locator(dateRangeInputSelector()).first();
+    await this.waitForVisible(dateInput, "date range input");
+    await this.guardedDomOperation(() => picker.scrollIntoViewIfNeeded());
+
+    const beforeValue = await this.guardedDomOperation(() => dateInput.inputValue());
+    await this.selectDateRangeQuickOption(picker, quickSelectLabel);
+    await this.page.waitForTimeout(1500);
+
+    const afterValue = await this.guardedDomOperation(() => dateInput.inputValue());
+    if (afterValue !== beforeValue) {
+      await this.page.waitForTimeout(1000);
+      return;
+    }
+
+    await this.selectDateRangeQuickOption(picker, quickSelectLabel);
+    await this.page.waitForTimeout(2000);
+
+    const retriedValue = await this.guardedDomOperation(() => dateInput.inputValue());
+    if (retriedValue === beforeValue) {
+      const parsed = parseDateRangeValue(retriedValue);
+      if (
+        parsed !== null &&
+        inclusiveDayCount(parsed.start, parsed.end) === days
+      ) {
+        return;
+      }
+
+      throw new CollectorFailure(
+        "SELECTOR_NOT_FOUND",
+        "Date range quick select did not update the configured range",
+      );
+    }
+  }
+
+  async searchCompetitorBrand(brandName: string): Promise<void> {
+    this.assertCurrentPageTrusted();
+    const searchInput = this.page.locator("input.brand_main-input").first();
+    await this.waitForVisible(searchInput, "brand search input");
+    await this.guardedDomOperation(async () => {
+      await searchInput.fill("");
+      await searchInput.fill(brandName);
+      await searchInput.press("Enter");
+    });
+    await this.page.waitForTimeout(2500);
+  }
+
   async visibleMaterialCount(): Promise<number> {
     this.assertCurrentPageTrusted();
     return (await this.visibleCards()).length;
@@ -147,6 +210,7 @@ export class YuntuPage {
 
   async openMaterial(index: number): Promise<void> {
     this.assertCurrentPageTrusted();
+    await this.dismissBlockingOverlays();
 
     if (!Number.isSafeInteger(index) || index < 0) {
       throw new CollectorFailure(
@@ -196,25 +260,57 @@ export class YuntuPage {
     if (this.selectors.closeDetail === undefined) {
       return;
     }
-
     const detailPanel = this.page.locator(this.selectors.detailPanel);
     await this.waitForVisible(detailPanel, "detail panel");
     await this.clickVisible(
-      detailPanel.locator(this.selectors.closeDetail),
+      detailPanel.locator(this.selectors.closeDetail).first(),
       "detail close button",
     );
 
     try {
       await this.guardedDomOperation(() =>
-        detailPanel.waitFor({ state: "hidden" }),
+        detailPanel.waitFor({ state: "hidden", timeout: 3000 }),
+      );
+    } catch (error) {
+      this.rethrowCollectorFailure(error);
+      return;
+    }
+  }
+
+  private async selectDateRangeQuickOption(
+    picker: Locator,
+    quickSelectLabel: string,
+  ): Promise<void> {
+    const suffix = picker
+      .locator(".content-ecom-date-picker .content-ecom-input-suffix")
+      .first();
+    await this.waitForVisible(suffix, "date range picker trigger");
+    await this.guardedDomOperation(() => suffix.click({ force: true }));
+
+    const popover = this.page.locator(
+      ".oc-content-ecom-daterange-picker__pop.content-ecom-popover-show",
+    );
+    try {
+      await this.guardedDomOperation(() =>
+        popover.waitFor({ state: "visible", timeout: 5000 }),
       );
     } catch (error) {
       this.rethrowCollectorFailure(error);
       throw new CollectorFailure(
         "SELECTOR_NOT_FOUND",
-        "Configured detail panel did not close",
+        "Date range picker popover did not open",
       );
     }
+
+    const quickOption = popover
+      .locator("a.content-ecom-link")
+      .filter({ hasText: quickSelectLabel })
+      .first();
+    await this.waitForVisible(quickOption, "date range quick select option");
+    await this.guardedDomOperation(() => quickOption.click());
+    await this.guardedDomOperation(() =>
+      popover.waitFor({ state: "hidden", timeout: 10_000 }).catch(() => undefined),
+    );
   }
 
   private async visibleCards(): Promise<Locator[]> {
@@ -244,9 +340,15 @@ export class YuntuPage {
   private async clickVisible(locator: Locator, name: string): Promise<void> {
     await this.waitForVisible(locator, name);
     try {
-      await this.guardedDomOperation(() => locator.click());
+      await this.guardedDomOperation(() => locator.click({ timeout: 5000 }));
     } catch (error) {
       this.rethrowCollectorFailure(error);
+      try {
+        await this.guardedDomOperation(() => locator.click({ force: true, timeout: 5000 }));
+        return;
+      } catch (forcedError) {
+        this.rethrowCollectorFailure(forcedError);
+      }
       throw new CollectorFailure(
         "SELECTOR_NOT_FOUND",
         `Visible ${name} could not be clicked`,
@@ -317,6 +419,28 @@ export class YuntuPage {
     if (error instanceof CollectorFailure) {
       throw error;
     }
+  }
+
+  private async dismissBlockingOverlays(): Promise<void> {
+    if (this.selectors.closeDetail !== undefined) {
+      const detailPanel = this.page.locator(this.selectors.detailPanel);
+      const closeButton = detailPanel.locator(this.selectors.closeDetail);
+      if (
+        (await detailPanel.isVisible().catch(() => false)) &&
+        (await closeButton.isVisible().catch(() => false))
+      ) {
+        await this.clickVisible(closeButton, "detail close button");
+      }
+    }
+
+    for (const selector of [".guide-close"]) {
+      const overlayClose = this.page.locator(selector);
+      if (await overlayClose.isVisible().catch(() => false)) {
+        await this.clickVisible(overlayClose, "overlay close button");
+      }
+    }
+
+    await this.page.keyboard.press("Escape").catch(() => undefined);
   }
 }
 
