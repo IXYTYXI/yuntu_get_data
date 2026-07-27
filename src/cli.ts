@@ -22,6 +22,7 @@ import { writeOutput } from "./output.js";
 import { MaterialDetail } from "./ui/material-detail.js";
 import {
   filterVideoListRows,
+  inferBrandNameFromTitle,
   readVideoListRows,
   type ParsedVideoListRow,
 } from "./ui/video-list.js";
@@ -232,13 +233,44 @@ async function collectMaterialsWithCriteria(
   if (criteria.extractionMethodLabel !== undefined) {
     await yuntuPage.applyExtractionMethod(criteria.extractionMethodLabel);
   }
+
+  const brandSelectionMode = criteria.brandSelectionMode ?? "sequential";
+  const rowLimit = Math.min(criteria.maxResultsPerBrand, config.resultLimit);
+
+  if (brandSelectionMode === "combined") {
+    await yuntuPage.searchCompetitorBrands(criteria.brands);
+    const rows = filterVideoListRows(await readVideoListRows(page), {
+      minExposure: criteria.minExposure,
+      minThreeSecondCompletionRate: criteria.minThreeSecondCompletionRate,
+      minCtr: criteria.minCtr,
+      maxResults: rowLimit,
+    });
+
+    for (const row of rows) {
+      records.push(
+        await collectMaterial(
+          page,
+          yuntuPage,
+          config,
+          row.rowIndex,
+          dryRun,
+          dryRun ? undefined : new BrowserVideoDownloader(page, config.download),
+          inferBrandNameFromTitle(row.title, criteria.brands),
+          row,
+        ),
+      );
+    }
+
+    return records;
+  }
+
   for (const brandName of criteria.brands) {
     await yuntuPage.searchCompetitorBrand(brandName);
     const rows = filterVideoListRows(await readVideoListRows(page), {
       minExposure: criteria.minExposure,
       minThreeSecondCompletionRate: criteria.minThreeSecondCompletionRate,
       minCtr: criteria.minCtr,
-      maxResults: Math.min(criteria.maxResultsPerBrand, config.resultLimit),
+      maxResults: rowLimit,
     });
 
     for (const row of rows) {

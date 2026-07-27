@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 import type {
+  BrandSelectionMode,
   CollectionConfig,
   CollectionCriteria,
   FieldSelectors,
@@ -65,6 +66,7 @@ const criteriaKeys = [
   "minThreeSecondCompletionRate",
   "minCtr",
   "extractionMethodLabel",
+  "brandSelectionMode",
 ] as const;
 
 const requiredCriteriaKeys = [
@@ -199,7 +201,20 @@ function parseCriteria(value: unknown): CollectionCriteria {
           ),
         }
       : {}),
+    ...(Object.hasOwn(criteria, "brandSelectionMode")
+      ? {
+          brandSelectionMode: readBrandSelectionMode(criteria.brandSelectionMode),
+        }
+      : {}),
   };
+}
+
+function readBrandSelectionMode(value: unknown): BrandSelectionMode {
+  if (value === "sequential" || value === "combined") {
+    return value;
+  }
+
+  throw new Error("criteria.brandSelectionMode must be sequential or combined");
 }
 
 function readRatio(value: unknown, name: string): number {

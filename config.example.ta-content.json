@@ -19,7 +19,8 @@
     "minExposure": 100000,
     "minThreeSecondCompletionRate": 0.3,
     "minCtr": 0.015,
-    "extractionMethodLabel": "曝光量TOP30"
+    "extractionMethodLabel": "曝光量TOP30",
+    "brandSelectionMode": "combined"
   },
   "filters": [],
   "selectors": {

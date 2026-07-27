@@ -61,6 +61,8 @@ export interface MaterialRecord {
   errors?: CollectorError[];
 }
 
+export type BrandSelectionMode = "sequential" | "combined";
+
 export interface CollectionCriteria {
   brands: string[];
   dateRangeDays: number;
@@ -70,6 +72,11 @@ export interface CollectionCriteria {
   minCtr: number;
   /** 细分筛选里的「截取方式」，例如「曝光量TOP30」 */
   extractionMethodLabel?: string;
+  /**
+   * sequential：每个品牌单独选一次、各采一批；
+   * combined：指定品牌里一次多选全部品牌，只筛一次列表。
+   */
+  brandSelectionMode?: BrandSelectionMode;
 }
 
 export interface VisibleFilterStep {

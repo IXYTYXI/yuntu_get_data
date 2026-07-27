@@ -380,12 +380,18 @@ export class YuntuPage {
     await this.page.waitForTimeout(2000);
   }
 
-  async searchCompetitorBrand(brandName: string): Promise<void> {
+  async searchCompetitorBrands(brandNames: readonly string[]): Promise<void> {
     this.assertCurrentPageTrusted();
     await this.ensureIndustryInspirationSection();
     await this.ensureIndustryContentLeaderboardTab();
     await this.clearSpecifiedBrandTags();
-    await this.selectSpecifiedBrandInSubdivisionFilter(brandName);
+    for (const brandName of brandNames) {
+      await this.addSpecifiedBrandInSubdivisionFilter(brandName);
+    }
+  }
+
+  async searchCompetitorBrand(brandName: string): Promise<void> {
+    await this.searchCompetitorBrands([brandName]);
   }
 
   private subdivisionFilterRow(): Locator {
@@ -423,9 +429,19 @@ export class YuntuPage {
     }
   }
 
-  private async selectSpecifiedBrandInSubdivisionFilter(
+  private async addSpecifiedBrandInSubdivisionFilter(
     brandName: string,
   ): Promise<void> {
+    const row = this.subdivisionFilterRow();
+    if (
+      await row
+        .getByText(brandName, { exact: true })
+        .isVisible()
+        .catch(() => false)
+    ) {
+      return;
+    }
+
     const trigger = this.specifiedBrandTrigger();
     await this.clickVisible(trigger, "specified brand filter trigger");
     await this.page.waitForTimeout(600);
@@ -456,7 +472,13 @@ export class YuntuPage {
     const option = popover.getByText(brandName, { exact: true }).first();
     await this.clickVisible(option, "specified brand option");
     await this.page.keyboard.press("Escape").catch(() => undefined);
-    await this.page.waitForTimeout(2500);
+    await this.page.waitForTimeout(1200);
+  }
+
+  private async selectSpecifiedBrandInSubdivisionFilter(
+    brandName: string,
+  ): Promise<void> {
+    await this.addSpecifiedBrandInSubdivisionFilter(brandName);
   }
 
   private async ensureIndustryContentLeaderboardTab(): Promise<void> {

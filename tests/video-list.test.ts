@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   filterVideoListRows,
+  inferBrandNameFromTitle,
   parseExposureText,
   parsePercentText,
   type ParsedVideoListRow,
@@ -16,6 +17,14 @@ test("parses wan-based exposure ranges", () => {
 test("parses percent metrics", () => {
   assert.ok(Math.abs(parsePercentText("56.60%")! - 0.566) < 0.0001);
   assert.equal(parsePercentText("1.27%"), 0.0127);
+});
+
+test("infers brand name from video title when brands are combined", () => {
+  assert.equal(
+    inferBrandNameFromTitle("猿辅导暑期课", ["学而思", "猿辅导"]),
+    "猿辅导",
+  );
+  assert.equal(inferBrandNameFromTitle("无品牌标题", ["学而思"]), undefined);
 });
 
 test("filters rows by exposure, 3s completion, and ctr thresholds", () => {

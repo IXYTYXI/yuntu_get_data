@@ -86,6 +86,19 @@ export function filterVideoListRows(
     .slice(0, criteria.maxResults);
 }
 
+export function inferBrandNameFromTitle(
+  title: string,
+  brands: readonly string[],
+): string | undefined {
+  for (const brand of brands) {
+    if (title.includes(brand)) {
+      return brand;
+    }
+  }
+
+  return undefined;
+}
+
 export async function readVideoListRows(page: Page): Promise<ParsedVideoListRow[]> {
   return page.evaluate(() => {
     const rows = [...document.querySelectorAll("tr.content-ecom-Table-Row")];
