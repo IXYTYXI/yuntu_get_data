@@ -143,7 +143,7 @@ export async function withConnectedBrowser<TResult>(
   try {
     return await operation(browser);
   } finally {
-    await browser.close();
+    await browser.close().catch(() => undefined);
   }
 }
 
@@ -481,11 +481,18 @@ function formatArgumentError(error: unknown): string {
 
 function formatCollectionError(error: unknown): string {
   if (error instanceof CollectorFailure) {
-    return `${error.code}: ${SAFE_ERROR_MESSAGES[error.code]}`;
+    const fallback = SAFE_ERROR_MESSAGES[error.code];
+    const detail =
+      error.message.length > 0 &&
+      error.message !== error.code &&
+      error.message !== fallback
+        ? redactErrorMessage(error.message)
+        : fallback;
+    return `${error.code}: ${detail}`;
   }
 
   if (error instanceof Error) {
-    const message = error.message;
+    const message = redactErrorMessage(error.message);
     if (/ECONNREFUSED|connectOverCDP|Failed to connect/i.test(message)) {
       return (
         "COLLECTOR_FAILED: Cannot connect to Chrome DevTools at the configured " +
@@ -494,16 +501,20 @@ function formatCollectionError(error: unknown): string {
       );
     }
 
-    if (
-      /configuration|pageUrlPrefix|criteria|selectors|output\.|download\./i.test(
-        message,
-      )
-    ) {
+    if (message.length > 0) {
       return `COLLECTOR_FAILED: ${message}`;
     }
   }
 
   return "COLLECTOR_FAILED: Unable to collect visible material data";
+}
+
+function redactErrorMessage(message: string): string {
+  return message
+    .replace(/https:\/\/[^\s]+/g, "https://yuntu.oceanengine.com/[redacted]")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 240);
 }
 
 function isDirectExecution(): boolean {

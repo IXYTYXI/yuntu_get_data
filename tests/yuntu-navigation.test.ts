@@ -25,6 +25,25 @@ class NavigatingFakePage {
     this.location = destination;
   }
 
+  async waitForURL(
+    predicate: (url: URL) => boolean,
+    _options?: { timeout?: number },
+  ): Promise<void> {
+    if (!predicate(new URL(this.location))) {
+      throw new Error("url mismatch");
+    }
+  }
+
+  locator(_selector: string): {
+    first: () => { waitFor: (_options?: { state?: string; timeout?: number }) => Promise<void> };
+  } {
+    return {
+      first: () => ({
+        waitFor: async () => undefined,
+      }),
+    };
+  }
+
   async waitForTimeout(milliseconds: number): Promise<void> {
     this.waits.push(milliseconds);
   }

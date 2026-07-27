@@ -86,14 +86,40 @@ export async function ensureCollectionPage(
       waitUntil: "domcontentloaded",
       timeout: 60_000,
     });
-  } catch {
+  } catch (error) {
+    const detail =
+      error instanceof Error
+        ? error.message.replace(/\s+/g, " ").trim().slice(0, 160)
+        : "navigation failed";
     throw new CollectorFailure(
       "SELECTOR_NOT_FOUND",
-      "Configured collection page did not finish loading",
+      `Collection page navigation failed: ${detail}`,
     );
   }
 
-  await page.waitForTimeout(3000);
+  try {
+    await page.waitForURL(
+      (url) => isTrustedPageUrl(url.toString(), pageUrlPrefix),
+      { timeout: 60_000 },
+    );
+  } catch {
+    throw new CollectorFailure(
+      "SELECTOR_NOT_FOUND",
+      "Collection page URL did not reach the configured prefix after navigation",
+    );
+  }
+
+  const dateInput = page.locator(dateRangeInputSelector()).first();
+  try {
+    await dateInput.waitFor({ state: "visible", timeout: 60_000 });
+  } catch {
+    throw new CollectorFailure(
+      "SELECTOR_NOT_FOUND",
+      "Collection page date filter did not become visible after navigation",
+    );
+  }
+
+  await page.waitForTimeout(1500);
 
   if (!isTrustedPageUrl(page.url(), pageUrlPrefix)) {
     throw targetPageSelectionFailure();
