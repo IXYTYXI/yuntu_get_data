@@ -9,12 +9,15 @@
     "directory": "output/videos",
     "filenameExtension": "mp4"
   },
-  "filters": [
-    {
-      "triggerSelector": "[data-testid=\"material-filter\"]",
-      "optionSelector": "[data-testid=\"material-filter-option\"]"
-    }
-  ],
+  "criteria": {
+    "brands": ["品牌A", "品牌B"],
+    "dateRangeDays": 7,
+    "maxResultsPerBrand": 30,
+    "minExposure": 100000,
+    "minThreeSecondCompletionRate": 0.3,
+    "minCtr": 0.015
+  },
+  "filters": [],
   "selectors": {
     "resultCard": "[data-testid=\"material-card\"]",
     "detailPanel": "[data-testid=\"material-detail-panel\"]",

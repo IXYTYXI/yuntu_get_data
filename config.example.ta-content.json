@@ -1,0 +1,35 @@
+{
+  "pageUrlPrefix": "https://yuntu.oceanengine.com/yuntu_brand/ecom/content_new/creative/ta_content",
+  "resultLimit": 30,
+  "output": {
+    "format": "jsonl",
+    "path": "output/materials.jsonl"
+  },
+  "download": {
+    "directory": "output/videos",
+    "filenameExtension": "mp4"
+  },
+  "criteria": {
+    "brands": ["学而思", "猿辅导", "作业帮", "海豚AI学", "雪梨老师"],
+    "dateRangeDays": 7,
+    "maxResultsPerBrand": 30,
+    "minExposure": 100000,
+    "minThreeSecondCompletionRate": 0.3,
+    "minCtr": 0.015
+  },
+  "filters": [],
+  "selectors": {
+    "resultCard": ".videoPreference__LinkItem-cktiVb",
+    "detailPanel": ".content-ecom-drawer-dialog",
+    "closeDetail": "span.i-icon-close",
+    "player": "video",
+    "playButton": ".xg-icon-play",
+    "fields": {
+      "materialId": ".yt-font-bold.content-ecom-yuntu-ellipsis-text",
+      "title": ".yt-font-bold.content-ecom-yuntu-ellipsis-text",
+      "launchDate": ".content-ecom-drawer-body",
+      "script": ".content-ecom-drawer-body",
+      "metrics": ".content-ecom-drawer-body"
+    }
+  }
+}
