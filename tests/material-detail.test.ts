@@ -482,26 +482,22 @@ test("matches an exact trusted path and descendants but not a sibling path", () 
     ),
     descendant,
   );
-  assert.throws(
-    () =>
-      findYuntuPage(
-        {
-          contexts: () => [
-            {
-              pages: () => [
-                new FakePage("https://yuntu.oceanengine.com/foo-bar/materials"),
-              ],
-            },
-          ],
-        } as unknown as Browser,
-        prefix,
-      ),
-    (error: unknown) =>
-      error instanceof CollectorFailure && error.code === "AUTH_REQUIRED",
+});
+
+test("findYuntuPage accepts any signed-in Yuntu tab for later navigation", () => {
+  const prefix = "https://yuntu.oceanengine.com/foo";
+  const sibling = new FakePage("https://yuntu.oceanengine.com/foo-bar/materials");
+
+  assert.equal(
+    findYuntuPage(
+      { contexts: () => [{ pages: () => [sibling] }] } as unknown as Browser,
+      prefix,
+    ),
+    sibling,
   );
 });
 
-test("reports authentication when no existing page has the configured prefix", () => {
+test("reports authentication when no signed-in Yuntu tab is available", () => {
   const browser = {
     contexts: () => [{ pages: () => [new FakePage("https://example.invalid/")] }],
   } as unknown as Browser;

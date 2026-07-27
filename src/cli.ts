@@ -25,7 +25,7 @@ import {
   readVideoListRows,
   type ParsedVideoListRow,
 } from "./ui/video-list.js";
-import { findYuntuPage, YuntuPage } from "./ui/yuntu-page.js";
+import { findYuntuPage, ensureCollectionPage, YuntuPage } from "./ui/yuntu-page.js";
 
 const DEFAULT_CDP_URL = "http://127.0.0.1:9222";
 const TRUSTED_YUNTU_ORIGIN = "https://yuntu.oceanengine.com";
@@ -175,6 +175,7 @@ export async function main(
           config.pageUrlPrefix,
           options.pageIndex,
         );
+        await ensureCollectionPage(page, config.pageUrlPrefix);
         const yuntuPage = new YuntuPage(
           page,
           config.selectors,
@@ -481,6 +482,25 @@ function formatArgumentError(error: unknown): string {
 function formatCollectionError(error: unknown): string {
   if (error instanceof CollectorFailure) {
     return `${error.code}: ${SAFE_ERROR_MESSAGES[error.code]}`;
+  }
+
+  if (error instanceof Error) {
+    const message = error.message;
+    if (/ECONNREFUSED|connectOverCDP|Failed to connect/i.test(message)) {
+      return (
+        "COLLECTOR_FAILED: Cannot connect to Chrome DevTools at the configured " +
+        "CDP URL. Start Google Chrome with --remote-debugging-port=9222 and a " +
+        "dedicated --user-data-dir, then retry."
+      );
+    }
+
+    if (
+      /configuration|pageUrlPrefix|criteria|selectors|output\.|download\./i.test(
+        message,
+      )
+    ) {
+      return `COLLECTOR_FAILED: ${message}`;
+    }
   }
 
   return "COLLECTOR_FAILED: Unable to collect visible material data";

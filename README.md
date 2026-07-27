@@ -2,7 +2,7 @@
 
 本工具通过 **Chrome DevTools Protocol（CDP）** 连接你已经手动打开并登录的云图页面，只操作页面上**可见**的控件：筛选日期、搜索品牌、读取列表指标、打开详情、校验播放、下载视频，并写入本地 JSONL/CSV。
 
-它**不会**代替你登录、不会 `page.goto` 跳转、不会直接读 Cookie/Storage，结束时会断开 CDP，不会关闭 Chrome。
+它**不会**代替你登录，也不会直接读 Cookie/Storage。启动后会在你选定的**已登录云图标签**上，自动 `goto` 到 `config.json` 里的 `pageUrlPrefix`（并保留当前标签 URL 上的 query，例如 `aadvid`）。结束时会断开 CDP，不会关闭 Chrome。
 
 ---
 
@@ -154,9 +154,10 @@ google-chrome --remote-debugging-port=9222 --user-data-dir="/tmp/yuntu-chrome-pr
 
 ### 在 Chrome 里人工完成
 
-1. 打开 [云图](https://yuntu.oceanengine.com/) 并**登录**；
-2. 进入与 `config.json` 中 `pageUrlPrefix` 一致的页面（TA 示例为 **内容洞察 / 视频偏好** 路径）；
-3. **建议只保留一个** 云图相关标签页；若有多标签，运行采集时需加 `--page-index <n>`（从 0 起）。
+1. 打开 [云图](https://yuntu.oceanengine.com/) 并**登录**（任意子页面即可，例如首页概览）；
+2. `--page-index` 指向的标签必须是 **`https://yuntu.oceanengine.com/` 域名下的 https 页面**（不要选 `blob:`、`chrome://` 或 `sw.js` 一类标签）；
+3. 采集器启动后会**自动打开** `pageUrlPrefix` 对应路径，并**沿用该标签 URL 上的 query**（如 `aadvid`）；
+4. 多标签时传 `--page-index <n>`；若只有一个已登录的云图标签，可省略 `--page-index`。
 
 ---
 

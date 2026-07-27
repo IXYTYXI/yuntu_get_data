@@ -16,7 +16,89 @@ export const DEFAULT_YUNTU_PAGE_PREFIX = "https://yuntu.oceanengine.com/";
 export const TRUSTED_PAGE_FAILURE_MESSAGE =
   "Configured Yuntu page is outside the trusted scope";
 const TARGET_PAGE_SELECTION_FAILURE_MESSAGE =
-  "Select one authenticated Yuntu page before collecting";
+  "Sign in to Yuntu in the debugging Chrome window and select a Yuntu tab";
+const TRUSTED_YUNTU_ORIGIN = "https://yuntu.oceanengine.com";
+
+export function isTrustedYuntuOrigin(location: string): boolean {
+  try {
+    const candidate = new URL(location);
+    return (
+      candidate.protocol === "https:" &&
+      candidate.hostname === "yuntu.oceanengine.com" &&
+      candidate.port === "" &&
+      candidate.username === "" &&
+      candidate.password === ""
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function buildCollectionPageUrl(
+  pageUrlPrefix: string,
+  referenceLocation: string,
+): string {
+  const target = new URL(pageUrlPrefix);
+  if (target.search !== "" || target.hash !== "") {
+    throw new CollectorFailure(
+      "SELECTOR_NOT_FOUND",
+      "pageUrlPrefix must not contain a query or hash delimiter",
+    );
+  }
+
+  const reference = new URL(referenceLocation);
+  if (target.search === "" && reference.search !== "") {
+    target.search = reference.search;
+  }
+
+  return target.toString();
+}
+
+export async function ensureCollectionPage(
+  page: Page,
+  pageUrlPrefix: string,
+): Promise<void> {
+  let location: string;
+  try {
+    location = page.url();
+  } catch {
+    throw targetPageSelectionFailure();
+  }
+
+  if (!isTrustedYuntuOrigin(location)) {
+    throw targetPageSelectionFailure();
+  }
+
+  if (isTrustedPageUrl(location, pageUrlPrefix)) {
+    return;
+  }
+
+  const destination = buildCollectionPageUrl(pageUrlPrefix, location);
+  if (!isTrustedPageUrl(destination, pageUrlPrefix)) {
+    throw new CollectorFailure(
+      "SELECTOR_NOT_FOUND",
+      TRUSTED_PAGE_FAILURE_MESSAGE,
+    );
+  }
+
+  try {
+    await page.goto(destination, {
+      waitUntil: "domcontentloaded",
+      timeout: 60_000,
+    });
+  } catch {
+    throw new CollectorFailure(
+      "SELECTOR_NOT_FOUND",
+      "Configured collection page did not finish loading",
+    );
+  }
+
+  await page.waitForTimeout(3000);
+
+  if (!isTrustedPageUrl(page.url(), pageUrlPrefix)) {
+    throw targetPageSelectionFailure();
+  }
+}
 
 export function isTrustedPageUrl(
   location: string,
@@ -87,13 +169,22 @@ export function findYuntuPage(
   }
 
   const selectedPage = selectTargetPage(pages, pageIndex);
+  assertTrustedYuntuSessionPage(selectedPage);
+
+  return selectedPage;
+}
+
+function assertTrustedYuntuSessionPage(page: Page): void {
+  let location: string;
   try {
-    assertTrustedPage(selectedPage, pageUrlPrefix);
+    location = page.url();
   } catch {
     throw targetPageSelectionFailure();
   }
 
-  return selectedPage;
+  if (!isTrustedYuntuOrigin(location)) {
+    throw targetPageSelectionFailure();
+  }
 }
 
 function selectTargetPage(pages: Page[], pageIndex: number | undefined): Page {
