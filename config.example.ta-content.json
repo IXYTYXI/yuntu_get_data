@@ -1,6 +1,9 @@
 {
   "pageUrlPrefix": "https://yuntu.oceanengine.com/yuntu_brand/ecom/content_new/creative/ta_content",
   "resultLimit": 30,
+  "navigationQuery": {
+    "crowd_tab": "industry_intention"
+  },
   "output": {
     "format": "jsonl",
     "path": "output/materials.jsonl"
@@ -22,6 +25,8 @@
     "resultCard": ".videoPreference__LinkItem-cktiVb",
     "detailPanel": ".content-ecom-drawer-dialog",
     "closeDetail": "span.i-icon-close",
+    "brandSearchRoot": ".filter__Options-fhbCMk",
+    "brandSearchInput": "input.brand_main-input",
     "player": "video",
     "playButton": ".xg-icon-play",
     "fields": {

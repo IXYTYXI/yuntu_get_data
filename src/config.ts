@@ -12,6 +12,7 @@ import type {
 const topLevelKeys = [
   "pageUrlPrefix",
   "resultLimit",
+  "navigationQuery",
   "output",
   "download",
   "criteria",
@@ -26,6 +27,9 @@ const selectorKeys = [
   "resultCard",
   "detailPanel",
   "closeDetail",
+  "industryInspirationTab",
+  "brandSearchRoot",
+  "brandSearchInput",
   "player",
   "playButton",
   "fields",
@@ -78,6 +82,9 @@ export function parseCollectionConfig(raw: unknown): CollectionConfig {
   return {
     pageUrlPrefix,
     resultLimit: readPositiveInteger(config.resultLimit, "resultLimit"),
+    ...(Object.hasOwn(config, "navigationQuery")
+      ? { navigationQuery: parseNavigationQuery(config.navigationQuery) }
+      : {}),
     output: parseOutput(config.output),
     download: parseDownload(config.download),
     ...(Object.hasOwn(config, "criteria")
@@ -129,6 +136,15 @@ function parseDownload(value: unknown): CollectionConfig["download"] {
   }
 
   return { directory, filenameExtension };
+}
+
+function parseNavigationQuery(value: unknown): Record<string, string> {
+  const query = requirePlainObject(value, "navigationQuery");
+  const parsed: Record<string, string> = {};
+  for (const [key, entry] of Object.entries(query)) {
+    parsed[key] = readNonEmptyString(entry, `navigationQuery.${key}`);
+  }
+  return parsed;
 }
 
 function parseCriteria(value: unknown): CollectionCriteria {
@@ -236,6 +252,16 @@ function parseSelectors(value: unknown): CollectionConfig["selectors"] {
       rawSelectors.closeDetail,
       "selectors.closeDetail",
     );
+  }
+
+  for (const key of [
+    "industryInspirationTab",
+    "brandSearchRoot",
+    "brandSearchInput",
+  ] as const) {
+    if (Object.hasOwn(rawSelectors, key)) {
+      selectors[key] = readNonEmptyString(rawSelectors[key], `selectors.${key}`);
+    }
   }
 
   return selectors;

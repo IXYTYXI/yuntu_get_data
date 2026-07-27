@@ -73,6 +73,17 @@ test("buildCollectionPageUrl keeps query params from the active tab", () => {
   );
 });
 
+test("buildCollectionPageUrl applies navigationQuery for content module", () => {
+  assert.equal(
+    buildCollectionPageUrl(
+      "https://yuntu.oceanengine.com/yuntu_brand/ecom/content_new/creative/ta_content",
+      "https://yuntu.oceanengine.com/yuntu_brand/ecom/home/overview?aadvid=1767299333797891",
+      { crowd_tab: "industry_intention" },
+    ),
+    "https://yuntu.oceanengine.com/yuntu_brand/ecom/content_new/creative/ta_content?aadvid=1767299333797891&crowd_tab=industry_intention",
+  );
+});
+
 test("findYuntuPage accepts a signed-in overview tab before navigation", () => {
   const overview = {
     url: () =>

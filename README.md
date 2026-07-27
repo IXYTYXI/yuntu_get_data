@@ -98,13 +98,18 @@ cp config.example.json config.json
 
 配置中存在 `criteria` 时，采集器会：
 
-1. 在弹层中选择 **「过去 N 天」**（`dateRangeDays` 仅支持 **7 / 15 / 30**）；
-2. 按 `brands` 依次在竞品搜索框输入品牌名；
-3. 解析当前列表表格，按阈值过滤后最多取 `min(maxResultsPerBrand, resultLimit)` 条；
-4. 逐条打开详情采集并下载（非 dry-run 时）。
+1. 打开 `pageUrlPrefix`，并按 `navigationQuery` 进入指定内容模块（TA 示例为 **内容 → 行业灵感激发**，`crowd_tab=industry_intention`）；
+2. 在弹层中选择 **「过去 N 天」**（`dateRangeDays` 仅支持 **7 / 15 / 30**）；
+3. 在 **行业灵感激发模块的筛选条**（`selectors.brandSearchRoot`）内搜索 `brands`，而不是页面其它搜索框；
+4. 解析当前列表表格，按阈值过滤后最多取 `min(maxResultsPerBrand, resultLimit)` 条；
+5. 逐条打开详情采集并下载（非 dry-run 时）。
 
 | 字段 | 含义 | 示例 |
 |------|------|------|
+| `navigationQuery` | 打开采集页时附加/覆盖的 query，用于定位内容子模块 | `{ "crowd_tab": "industry_intention" }` |
+| `selectors.brandSearchRoot` | 竞品品牌搜索所在筛选条容器 | `.filter__Options-fhbCMk` |
+| `selectors.brandSearchInput` | 品牌输入框（相对 root） | `input.brand_main-input` |
+| `selectors.industryInspirationTab` | （可选）「行业灵感激发」Tab 选择器；省略则尝试点击可见 Tab 文案 |  |
 | `brands` | 品牌名列表 | `["学而思", "猿辅导"]` |
 | `dateRangeDays` | 近 N 天（UI 快捷「过去 N 天」） | `7` |
 | `maxResultsPerBrand` | 每个品牌最多采集条数 | `30` |

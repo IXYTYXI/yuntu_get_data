@@ -90,6 +90,7 @@ export interface FieldSelectors {
 export interface CollectionConfig {
   pageUrlPrefix: string;
   resultLimit: number;
+  navigationQuery?: Record<string, string>;
   output: {
     format: OutputFormat;
     path: string;
@@ -104,6 +105,9 @@ export interface CollectionConfig {
     resultCard: string;
     detailPanel: string;
     closeDetail?: string;
+    industryInspirationTab?: string;
+    brandSearchRoot?: string;
+    brandSearchInput?: string;
     player: string;
     playButton: string;
     fields: FieldSelectors;

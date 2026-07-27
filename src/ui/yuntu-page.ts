@@ -37,6 +37,7 @@ export function isTrustedYuntuOrigin(location: string): boolean {
 export function buildCollectionPageUrl(
   pageUrlPrefix: string,
   referenceLocation: string,
+  navigationQuery: Record<string, string> = {},
 ): string {
   const target = new URL(pageUrlPrefix);
   if (target.search !== "" || target.hash !== "") {
@@ -51,12 +52,49 @@ export function buildCollectionPageUrl(
     target.search = reference.search;
   }
 
+  for (const [key, value] of Object.entries(navigationQuery)) {
+    target.searchParams.set(key, value);
+  }
+
   return target.toString();
+}
+
+export function matchesNavigationQuery(
+  location: string,
+  navigationQuery: Record<string, string>,
+): boolean {
+  if (Object.keys(navigationQuery).length === 0) {
+    return true;
+  }
+
+  try {
+    const url = new URL(location);
+    return Object.entries(navigationQuery).every(
+      ([key, value]) => url.searchParams.get(key) === value,
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function waitForCollectionPageReady(page: Page): Promise<void> {
+  const dateInput = page.locator(dateRangeInputSelector()).first();
+  try {
+    await dateInput.waitFor({ state: "visible", timeout: 60_000 });
+  } catch {
+    throw new CollectorFailure(
+      "SELECTOR_NOT_FOUND",
+      "Collection page date filter did not become visible after navigation",
+    );
+  }
+
+  await page.waitForTimeout(1500);
 }
 
 export async function ensureCollectionPage(
   page: Page,
   pageUrlPrefix: string,
+  navigationQuery: Record<string, string> = {},
 ): Promise<void> {
   let location: string;
   try {
@@ -69,11 +107,19 @@ export async function ensureCollectionPage(
     throw targetPageSelectionFailure();
   }
 
-  if (isTrustedPageUrl(location, pageUrlPrefix)) {
+  if (
+    isTrustedPageUrl(location, pageUrlPrefix) &&
+    matchesNavigationQuery(location, navigationQuery)
+  ) {
+    await waitForCollectionPageReady(page);
     return;
   }
 
-  const destination = buildCollectionPageUrl(pageUrlPrefix, location);
+  const destination = buildCollectionPageUrl(
+    pageUrlPrefix,
+    location,
+    navigationQuery,
+  );
   if (!isTrustedPageUrl(destination, pageUrlPrefix)) {
     throw new CollectorFailure(
       "SELECTOR_NOT_FOUND",
@@ -109,20 +155,17 @@ export async function ensureCollectionPage(
     );
   }
 
-  const dateInput = page.locator(dateRangeInputSelector()).first();
-  try {
-    await dateInput.waitFor({ state: "visible", timeout: 60_000 });
-  } catch {
-    throw new CollectorFailure(
-      "SELECTOR_NOT_FOUND",
-      "Collection page date filter did not become visible after navigation",
-    );
-  }
-
-  await page.waitForTimeout(1500);
+  await waitForCollectionPageReady(page);
 
   if (!isTrustedPageUrl(page.url(), pageUrlPrefix)) {
     throw targetPageSelectionFailure();
+  }
+
+  if (!matchesNavigationQuery(page.url(), navigationQuery)) {
+    throw new CollectorFailure(
+      "SELECTOR_NOT_FOUND",
+      "Collection page navigation query did not match the configured module",
+    );
   }
 }
 
@@ -310,7 +353,18 @@ export class YuntuPage {
 
   async searchCompetitorBrand(brandName: string): Promise<void> {
     this.assertCurrentPageTrusted();
-    const searchInput = this.page.locator("input.brand_main-input").first();
+    await this.ensureIndustryInspirationSection();
+
+    const inputSelector =
+      this.selectors.brandSearchInput ?? "input.brand_main-input";
+    const searchInput =
+      this.selectors.brandSearchRoot === undefined
+        ? this.page.locator(inputSelector).first()
+        : this.page
+            .locator(this.selectors.brandSearchRoot)
+            .locator(inputSelector)
+            .first();
+
     await this.waitForVisible(searchInput, "brand search input");
     await this.guardedDomOperation(async () => {
       await searchInput.fill("");
@@ -318,6 +372,38 @@ export class YuntuPage {
       await searchInput.press("Enter");
     });
     await this.page.waitForTimeout(2500);
+  }
+
+  private async ensureIndustryInspirationSection(): Promise<void> {
+    if (this.selectors.industryInspirationTab !== undefined) {
+      await this.clickVisible(
+        this.page.locator(this.selectors.industryInspirationTab).first(),
+        "industry inspiration tab",
+      );
+      await this.page.waitForTimeout(1500);
+      return;
+    }
+
+    const tabCandidates = this.page
+      .locator(
+        ".content-ecom-tabs-tab, [role='tab'], .content-ecom-radio-button",
+      )
+      .filter({ hasText: "行业灵感激发" });
+    const count = await this.guardedDomOperation(() => tabCandidates.count());
+    for (let index = 0; index < count; index += 1) {
+      const tab = tabCandidates.nth(index);
+      if (!(await this.isVisible(tab, "industry inspiration tab"))) {
+        continue;
+      }
+      const className =
+        (await tab.getAttribute("class").catch(() => null)) ?? "";
+      if (className.includes("active") || className.includes("checked")) {
+        return;
+      }
+      await this.clickVisible(tab, "industry inspiration tab");
+      await this.page.waitForTimeout(1500);
+      return;
+    }
   }
 
   async visibleMaterialCount(): Promise<number> {
