@@ -28,6 +28,10 @@ const selectorKeys = [
   "detailPanel",
   "closeDetail",
   "industryInspirationTab",
+  "industryContentLeaderboardTab",
+  "subdivisionBrandTrigger",
+  "subdivisionBrandSearchInput",
+  "extractionMethodTrigger",
   "brandSearchRoot",
   "brandSearchInput",
   "player",
@@ -54,6 +58,16 @@ const fieldSelectorKeys = [
 ] as const;
 
 const criteriaKeys = [
+  "brands",
+  "dateRangeDays",
+  "maxResultsPerBrand",
+  "minExposure",
+  "minThreeSecondCompletionRate",
+  "minCtr",
+  "extractionMethodLabel",
+] as const;
+
+const requiredCriteriaKeys = [
   "brands",
   "dateRangeDays",
   "maxResultsPerBrand",
@@ -149,7 +163,7 @@ function parseNavigationQuery(value: unknown): Record<string, string> {
 
 function parseCriteria(value: unknown): CollectionCriteria {
   const criteria = requirePlainObject(value, "criteria");
-  requireExactKeys(criteria, criteriaKeys, "criteria");
+  requireExactKeys(criteria, criteriaKeys, "criteria", requiredCriteriaKeys);
 
   const brands = criteria.brands;
   if (!Array.isArray(brands) || brands.length === 0) {
@@ -177,6 +191,14 @@ function parseCriteria(value: unknown): CollectionCriteria {
       "criteria.minThreeSecondCompletionRate",
     ),
     minCtr: readRatio(criteria.minCtr, "criteria.minCtr"),
+    ...(Object.hasOwn(criteria, "extractionMethodLabel")
+      ? {
+          extractionMethodLabel: readNonEmptyString(
+            criteria.extractionMethodLabel,
+            "criteria.extractionMethodLabel",
+          ),
+        }
+      : {}),
   };
 }
 
@@ -256,6 +278,10 @@ function parseSelectors(value: unknown): CollectionConfig["selectors"] {
 
   for (const key of [
     "industryInspirationTab",
+    "industryContentLeaderboardTab",
+    "subdivisionBrandTrigger",
+    "subdivisionBrandSearchInput",
+    "extractionMethodTrigger",
     "brandSearchRoot",
     "brandSearchInput",
   ] as const) {

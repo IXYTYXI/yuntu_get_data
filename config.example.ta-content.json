@@ -18,15 +18,14 @@
     "maxResultsPerBrand": 30,
     "minExposure": 100000,
     "minThreeSecondCompletionRate": 0.3,
-    "minCtr": 0.015
+    "minCtr": 0.015,
+    "extractionMethodLabel": "曝光量TOP30"
   },
   "filters": [],
   "selectors": {
     "resultCard": ".videoPreference__LinkItem-cktiVb",
     "detailPanel": ".content-ecom-drawer-dialog",
     "closeDetail": "span.i-icon-close",
-    "brandSearchRoot": ".filter__Options-fhbCMk",
-    "brandSearchInput": "input.brand_main-input",
     "player": "video",
     "playButton": ".xg-icon-play",
     "fields": {

@@ -100,17 +100,19 @@ cp config.example.json config.json
 
 1. 打开 `pageUrlPrefix`，并按 `navigationQuery` 进入指定内容模块（TA 示例为 **内容 → 行业灵感激发**，`crowd_tab=industry_intention`）；
 2. 在弹层中选择 **「过去 N 天」**（`dateRangeDays` 仅支持 **7 / 15 / 30**）；
-3. 在 **行业灵感激发模块的筛选条**（`selectors.brandSearchRoot`）内搜索 `brands`，而不是页面其它搜索框；
-4. 解析当前列表表格，按阈值过滤后最多取 `min(maxResultsPerBrand, resultLimit)` 条；
-5. 逐条打开详情采集并下载（非 dry-run 时）。
+3. 打开 **行业内容榜**，在 **细分筛选 → 指定品牌** 多选框里逐个选择 `brands`（不是顶部搜索框）；
+4. 若配置了 `criteria.extractionMethodLabel`，在 **截取方式** 中选择对应项（如 `曝光量TOP30`）；
+5. 解析当前列表表格，按阈值过滤后最多取 `min(maxResultsPerBrand, resultLimit)` 条；
+6. 逐条打开详情采集并下载（非 dry-run 时）。
 
 | 字段 | 含义 | 示例 |
 |------|------|------|
-| `navigationQuery` | 打开采集页时附加/覆盖的 query，用于定位内容子模块 | `{ "crowd_tab": "industry_intention" }` |
-| `selectors.brandSearchRoot` | 竞品品牌搜索所在筛选条容器 | `.filter__Options-fhbCMk` |
-| `selectors.brandSearchInput` | 品牌输入框（相对 root） | `input.brand_main-input` |
-| `selectors.industryInspirationTab` | （可选）「行业灵感激发」Tab 选择器；省略则尝试点击可见 Tab 文案 |  |
-| `brands` | 品牌名列表 | `["学而思", "猿辅导"]` |
+| `navigationQuery` | 打开采集页时附加 query，进入 **行业灵感激发** | `{ "crowd_tab": "industry_intention" }` |
+| `criteria.extractionMethodLabel` | **细分筛选** 行的 **截取方式** | `"曝光量TOP30"` |
+| `selectors.subdivisionBrandTrigger` | （可选）**指定品牌** 下拉触发器 | DevTools 中红框区域 |
+| `selectors.subdivisionBrandSearchInput` | （可选）品牌下拉内搜索框 |  |
+| `selectors.industryContentLeaderboardTab` | （可选）**行业内容榜** Tab | 省略则点可见 Tab 文案 |
+| `brands` | **指定品牌** 中要选的品牌名 | `["学而思", "猿辅导"]` |
 | `dateRangeDays` | 近 N 天（UI 快捷「过去 N 天」） | `7` |
 | `maxResultsPerBrand` | 每个品牌最多采集条数 | `30` |
 | `minExposure` | 曝光下限（整数，如 10w = `100000`） | `100000` |

@@ -351,27 +351,142 @@ export class YuntuPage {
     }
   }
 
+  async applyExtractionMethod(label: string): Promise<void> {
+    this.assertCurrentPageTrusted();
+    await this.ensureIndustryInspirationSection();
+    await this.ensureIndustryContentLeaderboardTab();
+
+    const row = this.subdivisionFilterRow();
+    const trigger =
+      this.selectors.extractionMethodTrigger === undefined
+        ? row
+            .getByText("截取方式", { exact: true })
+            .locator(
+              "xpath=ancestor::*[contains(@class,'content-ecom-select')][1]",
+            )
+            .locator(".content-ecom-popper-trigger")
+            .first()
+        : this.page.locator(this.selectors.extractionMethodTrigger).first();
+
+    await this.clickVisible(trigger, "extraction method trigger");
+    await this.page.waitForTimeout(600);
+
+    const option = this.page
+      .locator(".content-ecom-select-popover-show, .content-ecom-popover-show")
+      .last()
+      .getByText(label, { exact: true })
+      .first();
+    await this.clickVisible(option, "extraction method option");
+    await this.page.waitForTimeout(2000);
+  }
+
   async searchCompetitorBrand(brandName: string): Promise<void> {
     this.assertCurrentPageTrusted();
     await this.ensureIndustryInspirationSection();
+    await this.ensureIndustryContentLeaderboardTab();
+    await this.clearSpecifiedBrandTags();
+    await this.selectSpecifiedBrandInSubdivisionFilter(brandName);
+  }
 
-    const inputSelector =
-      this.selectors.brandSearchInput ?? "input.brand_main-input";
-    const searchInput =
-      this.selectors.brandSearchRoot === undefined
-        ? this.page.locator(inputSelector).first()
-        : this.page
-            .locator(this.selectors.brandSearchRoot)
-            .locator(inputSelector)
-            .first();
+  private subdivisionFilterRow(): Locator {
+    return this.page
+      .locator("div, section, form, [class*='filter']")
+      .filter({ hasText: "细分筛选" })
+      .filter({ hasText: "指定品牌" })
+      .first();
+  }
 
-    await this.waitForVisible(searchInput, "brand search input");
-    await this.guardedDomOperation(async () => {
-      await searchInput.fill("");
-      await searchInput.fill(brandName);
-      await searchInput.press("Enter");
-    });
+  private specifiedBrandTrigger(): Locator {
+    if (this.selectors.subdivisionBrandTrigger !== undefined) {
+      return this.page.locator(this.selectors.subdivisionBrandTrigger).first();
+    }
+
+    const row = this.subdivisionFilterRow();
+    return row
+      .getByText("指定品牌", { exact: true })
+      .locator("xpath=ancestor::*[contains(@class,'content-ecom-select')][1]")
+      .locator(".content-ecom-popper-trigger")
+      .first()
+      .or(row.locator(".content-ecom-select .content-ecom-popper-trigger").first());
+  }
+
+  private async clearSpecifiedBrandTags(): Promise<void> {
+    const row = this.subdivisionFilterRow();
+    const closeButtons = row.locator(
+      ".content-ecom-tag-close, [class*='tag-close'], span.i-icon-close",
+    );
+    let count = await this.guardedDomOperation(() => closeButtons.count());
+    while (count > 0) {
+      await this.clickVisible(closeButtons.first(), "specified brand tag close");
+      await this.page.waitForTimeout(300);
+      count = await closeButtons.count();
+    }
+  }
+
+  private async selectSpecifiedBrandInSubdivisionFilter(
+    brandName: string,
+  ): Promise<void> {
+    const trigger = this.specifiedBrandTrigger();
+    await this.clickVisible(trigger, "specified brand filter trigger");
+    await this.page.waitForTimeout(600);
+
+    const popover = this.page
+      .locator(".content-ecom-select-popover-show.content-ecom-popover-show")
+      .last();
+    await this.waitForVisible(popover, "specified brand filter popover");
+
+    if (this.selectors.subdivisionBrandSearchInput !== undefined) {
+      const searchInput = popover
+        .locator(this.selectors.subdivisionBrandSearchInput)
+        .first();
+      await this.waitForVisible(searchInput, "specified brand search input");
+      await this.guardedDomOperation(async () => {
+        await searchInput.fill("");
+        await searchInput.fill(brandName);
+      });
+      await this.page.waitForTimeout(800);
+    } else {
+      const genericSearch = popover.locator("input").first();
+      if (await genericSearch.isVisible().catch(() => false)) {
+        await genericSearch.fill(brandName);
+        await this.page.waitForTimeout(800);
+      }
+    }
+
+    const option = popover.getByText(brandName, { exact: true }).first();
+    await this.clickVisible(option, "specified brand option");
+    await this.page.keyboard.press("Escape").catch(() => undefined);
     await this.page.waitForTimeout(2500);
+  }
+
+  private async ensureIndustryContentLeaderboardTab(): Promise<void> {
+    if (this.selectors.industryContentLeaderboardTab !== undefined) {
+      await this.clickVisible(
+        this.page.locator(this.selectors.industryContentLeaderboardTab).first(),
+        "industry content leaderboard tab",
+      );
+      await this.page.waitForTimeout(1500);
+      return;
+    }
+
+    const tabCandidates = this.page
+      .locator(".content-ecom-tabs-tab, [role='tab']")
+      .filter({ hasText: "行业内容榜" });
+    const count = await this.guardedDomOperation(() => tabCandidates.count());
+    for (let index = 0; index < count; index += 1) {
+      const tab = tabCandidates.nth(index);
+      if (!(await this.isVisible(tab, "industry content leaderboard tab"))) {
+        continue;
+      }
+      const className =
+        (await tab.getAttribute("class").catch(() => null)) ?? "";
+      if (className.includes("active") || className.includes("checked")) {
+        return;
+      }
+      await this.clickVisible(tab, "industry content leaderboard tab");
+      await this.page.waitForTimeout(1500);
+      return;
+    }
   }
 
   private async ensureIndustryInspirationSection(): Promise<void> {

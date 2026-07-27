@@ -175,7 +175,11 @@ export async function main(
           config.pageUrlPrefix,
           options.pageIndex,
         );
-        await ensureCollectionPage(page, config.pageUrlPrefix);
+        await ensureCollectionPage(
+          page,
+          config.pageUrlPrefix,
+          config.navigationQuery ?? {},
+        );
         const yuntuPage = new YuntuPage(
           page,
           config.selectors,
@@ -225,6 +229,9 @@ async function collectMaterialsWithCriteria(
 
   const records: MaterialRecord[] = [];
   await yuntuPage.applyDateRangeDays(criteria.dateRangeDays);
+  if (criteria.extractionMethodLabel !== undefined) {
+    await yuntuPage.applyExtractionMethod(criteria.extractionMethodLabel);
+  }
   for (const brandName of criteria.brands) {
     await yuntuPage.searchCompetitorBrand(brandName);
     const rows = filterVideoListRows(await readVideoListRows(page), {

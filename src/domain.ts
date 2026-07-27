@@ -68,6 +68,8 @@ export interface CollectionCriteria {
   minExposure: number;
   minThreeSecondCompletionRate: number;
   minCtr: number;
+  /** 细分筛选里的「截取方式」，例如「曝光量TOP30」 */
+  extractionMethodLabel?: string;
 }
 
 export interface VisibleFilterStep {
@@ -106,6 +108,10 @@ export interface CollectionConfig {
     detailPanel: string;
     closeDetail?: string;
     industryInspirationTab?: string;
+    industryContentLeaderboardTab?: string;
+    subdivisionBrandTrigger?: string;
+    subdivisionBrandSearchInput?: string;
+    extractionMethodTrigger?: string;
     brandSearchRoot?: string;
     brandSearchInput?: string;
     player: string;
