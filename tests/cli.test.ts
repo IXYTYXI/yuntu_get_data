@@ -68,6 +68,7 @@ test("parses a configuration path with the default CDP URL", () => {
     cdpUrl: "http://127.0.0.1:9222",
     pageIndex: undefined,
     dryRun: false,
+    debugPage: false,
     help: false,
   });
 });
@@ -88,6 +89,7 @@ test("parses an explicit CDP URL with dry-run enabled", () => {
       cdpUrl: "http://127.0.0.1:9333",
       pageIndex: 2,
       dryRun: true,
+      debugPage: false,
       help: false,
     },
   );
@@ -252,6 +254,7 @@ test("allows help without a configuration path", () => {
     cdpUrl: "http://127.0.0.1:9222",
     pageIndex: undefined,
     dryRun: false,
+    debugPage: false,
     help: true,
   });
 });

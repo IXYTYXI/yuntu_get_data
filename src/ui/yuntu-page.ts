@@ -13,6 +13,11 @@ import {
   inclusiveDayCount,
   parseDateRangeValue,
 } from "./date-range.js";
+import {
+  formatPageInspectionSummary,
+  hasSubdivisionFilters,
+  inspectYuntuPage,
+} from "./page-inspect.js";
 
 export const DEFAULT_YUNTU_PAGE_PREFIX = "https://yuntu.oceanengine.com/";
 /** 内容 → 灵感激发 → 行业灵感激发 / 行业内容（真实落地 path，不是 ta_content） */
@@ -347,13 +352,74 @@ export class YuntuPage {
 
   async navigateToIndustryInspirationModule(): Promise<void> {
     this.assertCurrentPageTrusted();
-    if (await this.isOnIndustryInspirationModule()) {
-      await this.ensureIndustryContentLeaderboardTab();
-      return;
+    await this.prepareIndustryContentView();
+  }
+
+  async debugPageInspection(): Promise<string> {
+    return formatPageInspectionSummary(await inspectYuntuPage(this.page));
+  }
+
+  private async prepareIndustryContentView(): Promise<void> {
+    await this.dismissBlockingOverlays();
+    await this.page
+      .waitForLoadState("networkidle", { timeout: 45_000 })
+      .catch(() => undefined);
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const inspection = await inspectYuntuPage(this.page);
+      if (inspection.requiresSignIn) {
+        throw new CollectorFailure(
+          "AUTH_REQUIRED",
+          "Sign in to Yuntu in the debugging Chrome window and select a Yuntu tab",
+        );
+      }
+
+      if (
+        hasSubdivisionFilters(inspection) ||
+        (await this.anyFilterLabelVisible())
+      ) {
+        try {
+          const row = await this.waitForSubdivisionFilterRow();
+          await this.guardedDomOperation(() => row.scrollIntoViewIfNeeded());
+          await this.page.waitForTimeout(500);
+          return;
+        } catch {
+          // fall through to navigation / scroll retries
+        }
+      }
+
+      if (isIndustryInspirationPageUrl(this.page.url())) {
+        await this.ensureIndustryContentLeaderboardTab();
+        await this.expandSubdivisionFiltersIfCollapsed();
+        await this.page.waitForTimeout(2500);
+        await this.guardedDomOperation(async () => {
+          await this.page.evaluate(() => {
+            window.scrollBy(0, Math.max(500, window.innerHeight * 0.5));
+          });
+        });
+        await this.page.waitForTimeout(1500);
+        continue;
+      }
+
+      try {
+        await this.clickIndustryInspirationEntry();
+      } catch {
+        // menu navigation may fail when already on target module shell
+      }
+      await this.page.waitForTimeout(2500);
     }
 
-    await this.clickIndustryInspirationEntry();
-    await this.waitForIndustryInspirationModule();
+    await this.failWithPageInspection(
+      "无法在页面上定位行业内容榜筛选区（指定品牌 / 截取方式）",
+    );
+  }
+
+  private async failWithPageInspection(baseMessage: string): Promise<never> {
+    const inspection = await inspectYuntuPage(this.page);
+    throw new CollectorFailure(
+      "SELECTOR_NOT_FOUND",
+      `${baseMessage} | ${formatPageInspectionSummary(inspection)}`,
+    );
   }
 
   async applyDateRangeDays(days: number): Promise<void> {
@@ -612,12 +678,21 @@ export class YuntuPage {
   private async waitForSubdivisionFilterRow(): Promise<Locator> {
     const deadline = Date.now() + 90_000;
     while (Date.now() < deadline) {
+      const inspection = await inspectYuntuPage(this.page);
+      if (inspection.requiresSignIn) {
+        throw new CollectorFailure(
+          "AUTH_REQUIRED",
+          "Sign in to Yuntu in the debugging Chrome window and select a Yuntu tab",
+        );
+      }
+
       await this.resolveFilterScope();
       const row = this.subdivisionFilterRow();
       if (await row.isVisible().catch(() => false)) {
         return row;
       }
-      if (await this.anyFilterLabelVisible()) {
+
+      if (hasSubdivisionFilters(inspection) || (await this.anyFilterLabelVisible())) {
         try {
           await row.waitFor({ state: "visible", timeout: 5000 });
           return row;
@@ -625,54 +700,32 @@ export class YuntuPage {
           // continue polling
         }
       }
+
       await this.page.waitForTimeout(1500);
     }
 
-    throw new CollectorFailure(
-      "SELECTOR_NOT_FOUND",
+    return await this.failWithPageInspection(
       "Timed out waiting for subdivision filters",
     );
   }
 
   private async ensureSubdivisionFiltersReady(): Promise<void> {
-    await this.dismissBlockingOverlays();
-    await this.page
-      .waitForLoadState("networkidle", { timeout: 45_000 })
-      .catch(() => undefined);
-
-    for (let attempt = 0; attempt < 4; attempt += 1) {
-      await this.ensureIndustryContentLeaderboardTab();
-      await this.expandSubdivisionFiltersIfCollapsed();
-
+    const inspection = await inspectYuntuPage(this.page);
+    if (
+      hasSubdivisionFilters(inspection) ||
+      (await this.anyFilterLabelVisible())
+    ) {
       try {
         const row = await this.waitForSubdivisionFilterRow();
         await this.guardedDomOperation(() => row.scrollIntoViewIfNeeded());
         await this.page.waitForTimeout(500);
         return;
       } catch {
-        await this.guardedDomOperation(async () => {
-          await this.page.evaluate(() => {
-            window.scrollBy(0, Math.max(400, window.innerHeight * 0.4));
-          });
-        });
-        await this.page.waitForTimeout(1500);
+        // continue with full page preparation
       }
     }
 
-    await this.navigateToIndustryInspirationModule();
-    await this.expandSubdivisionFiltersIfCollapsed();
-
-    try {
-      const row = await this.waitForSubdivisionFilterRow();
-      await this.guardedDomOperation(() => row.scrollIntoViewIfNeeded());
-      await this.page.waitForTimeout(500);
-      return;
-    } catch {
-      throw new CollectorFailure(
-        "SELECTOR_NOT_FOUND",
-        `细分筛选（指定品牌 / 截取方式）未出现。请在 9222 Chrome 同一 tab 手动打开 industryContent 页，确认已登录且能看到「指定品牌」。当前路径: ${safePagePath(this.page.url())}`,
-      );
-    }
+    await this.prepareIndustryContentView();
   }
 
   private async clearSpecifiedBrandTags(): Promise<void> {
@@ -877,56 +930,6 @@ export class YuntuPage {
       .getByText("行业灵感激发", { exact: true })
       .first();
     await this.clickVisible(menuLink, "content menu industry inspiration link");
-  }
-
-  private async isOnIndustryInspirationModule(): Promise<boolean> {
-    if (isTaContentInsightPageUrl(this.page.url())) {
-      return false;
-    }
-
-    if (await this.subdivisionFilterRow().isVisible().catch(() => false)) {
-      return true;
-    }
-
-    return this.page
-      .getByText(/指定\s*品牌|竞品\s*品牌/)
-      .first()
-      .isVisible()
-      .catch(() => false);
-  }
-
-  private async waitForIndustryInspirationModule(): Promise<void> {
-    try {
-      await this.page.waitForFunction(
-        () => !window.location.pathname.includes("/ta_content"),
-        { timeout: 60_000 },
-      );
-    } catch {
-      // SPA may keep pathname; rely on UI markers below.
-    }
-
-    await this.page.waitForTimeout(1500);
-
-    await this.ensureIndustryContentLeaderboardTab();
-
-    try {
-      await this.subdivisionFilterRow().waitFor({
-        state: "visible",
-        timeout: 60_000,
-      });
-    } catch {
-      throw new CollectorFailure(
-        "SELECTOR_NOT_FOUND",
-        `Could not reach 行业灵感激发 → 行业内容榜（细分筛选未出现）。当前路径: ${safePagePath(this.page.url())}`,
-      );
-    }
-
-    if (isTaContentInsightPageUrl(this.page.url())) {
-      throw new CollectorFailure(
-        "SELECTOR_NOT_FOUND",
-        "Still on TA content insight (ta_content). Configure pageUrlPrefix for industry inspiration and use 内容 → 行业灵感激发, not TA内容洞察",
-      );
-    }
   }
 
   async visibleMaterialCount(): Promise<number> {

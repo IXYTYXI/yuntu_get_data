@@ -48,6 +48,7 @@ export const CLI_HELP_TEXT = [
   `  --cdp-url <url>   Chrome DevTools endpoint (default: ${DEFAULT_CDP_URL}).`,
   "  --page-index <n>  Required when the debugging browser has multiple tabs.",
   "  --dry-run          Collect visible metadata without downloading videos.",
+  "  --debug-page       Log visible page markers before collection actions.",
   "  --help             Show this help text.",
   "",
   "Downloads verified player media into the configured download.directory.",
@@ -59,6 +60,7 @@ export interface ParsedCliArgs {
   cdpUrl: string;
   pageIndex?: number;
   dryRun: boolean;
+  debugPage: boolean;
   help: boolean;
 }
 
@@ -72,6 +74,7 @@ export function parseCliArgs(argv: readonly string[]): ParsedCliArgs {
   let cdpUrl = DEFAULT_CDP_URL;
   let pageIndex: number | undefined;
   let dryRun = false;
+  let debugPage = false;
   let help = false;
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -97,6 +100,9 @@ export function parseCliArgs(argv: readonly string[]): ParsedCliArgs {
       case "--dry-run":
         dryRun = true;
         break;
+      case "--debug-page":
+        debugPage = true;
+        break;
       case "--help":
         help = true;
         break;
@@ -109,7 +115,7 @@ export function parseCliArgs(argv: readonly string[]): ParsedCliArgs {
     throw new Error("--config is required");
   }
 
-  return { configPath, cdpUrl, pageIndex, dryRun, help };
+  return { configPath, cdpUrl, pageIndex, dryRun, debugPage, help };
 }
 
 export function sanitizeBrowserLocation(location: string): string {
@@ -187,6 +193,10 @@ export async function main(
           config.filters,
           config.pageUrlPrefix,
         );
+
+        if (options.debugPage) {
+          logger.log(`PAGE_DEBUG: ${await yuntuPage.debugPageInspection()}`);
+        }
 
         if (
           config.criteria !== undefined ||
@@ -561,7 +571,7 @@ function redactErrorMessage(message: string): string {
     .replace(/https:\/\/[^\s]+/g, "https://yuntu.oceanengine.com/[redacted]")
     .replace(/\s+/g, " ")
     .trim()
-    .slice(0, 240);
+    .slice(0, 480);
 }
 
 function isDirectExecution(): boolean {

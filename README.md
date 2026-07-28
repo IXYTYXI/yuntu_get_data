@@ -128,8 +128,9 @@ cp config.example.json config.json
 | 报错 | 含义 | 处理 |
 |------|------|------|
 | `specified brand filter trigger did not become visible` | 页面上没有 **行业灵感激发 → 行业内容榜 → 细分筛选 → 指定品牌** | `pageUrlPrefix` 用 `.../content_lab/inspiration/industryContent`，勿用 `ta_content`；拉最新代码后再跑；在 9222 Chrome 手动进入该页，确认能看到「截取方式」 |
-| `Configured date range quick select option` | **仍是旧版程序**（未拉到最新代码） | Mac 提交并 push 后 Windows `git pull`，再 `npm start` |
-| `date range quick select option` / `Date range quick select not found` | 日期弹层里没有「过去 N 天」 | 先进入 **行业内容榜**，点日期框看是否有快捷项；`dateRangeDays` 仅支持 7 / 15 / 30 |
+| `git pull` 仍 Already up to date | 远程还没有最新提交 | 开发机先 `git push`，Windows 再 `git pull` |
+
+失败时加 `--debug-page` 会先输出 `PAGE_DEBUG:`（页面可见文案探测到的 markers / excerpt），便于对照 Chrome 里实际 UI。
 
 ### 页面上的其他筛选项
 
