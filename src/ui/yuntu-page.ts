@@ -537,6 +537,7 @@ export class YuntuPage {
   async searchCompetitorBrands(brandNames: readonly string[]): Promise<void> {
     this.assertCurrentPageTrusted();
     await this.ensureSubdivisionFiltersReady();
+    await this.ensureSpecifiedBrandMode();
     await this.clearSpecifiedBrandTags();
     for (const brandName of brandNames) {
       await this.addSpecifiedBrandInSubdivisionFilter(brandName);
@@ -655,29 +656,61 @@ export class YuntuPage {
       .first();
   }
 
+  private brandScopeModeTrigger(): Locator {
+    const row = this.subdivisionFilterRow();
+    return row
+      .locator(".content-ecom-select, [class*='content-ecom-select']")
+      .filter({ hasText: /全行业|指定\s*品牌/ })
+      .locator(".content-ecom-popper-trigger, [class*='popper-trigger']")
+      .first();
+  }
+
+  private async ensureSpecifiedBrandMode(): Promise<void> {
+    const trigger = this.brandScopeModeTrigger();
+    if (!(await trigger.isVisible().catch(() => false))) {
+      return;
+    }
+
+    const triggerText = await this.guardedDomOperation(() => trigger.innerText());
+    if (/指定\s*品牌/.test(triggerText)) {
+      return;
+    }
+
+    await this.clickVisible(trigger, "brand scope mode trigger");
+    await this.page.waitForTimeout(500);
+
+    const popover = this.page
+      .locator(".content-ecom-select-popover-show.content-ecom-popover-show")
+      .last();
+    await this.waitForVisible(popover, "brand scope mode popover");
+    const option = popover.getByText("指定品牌", { exact: true }).first();
+    await this.clickVisible(option, "brand scope specified brand option");
+    await this.page.keyboard.press("Escape").catch(() => undefined);
+    await this.page.waitForTimeout(800);
+  }
+
   private specifiedBrandTrigger(): Locator {
     if (this.selectors.subdivisionBrandTrigger !== undefined) {
       return this.page.locator(this.selectors.subdivisionBrandTrigger).first();
     }
 
     const row = this.subdivisionFilterRow();
-    const byLabel = this.subdivisionSelectTrigger(row, "指定品牌");
-    const byStructure = row
+    const multiSelect = row
       .locator(".content-ecom-select, [class*='content-ecom-select']")
+      .filter({ hasNotText: /全行业/ })
       .filter({ hasNotText: /截取\s*方式/ })
-      .filter({ hasNotText: /核心人群/ })
-      .filter({ hasNotText: /年龄/ })
-      .filter({ hasNotText: /性别/ })
-      .filter({ hasNotText: /八大人群/ })
-      .locator(".content-ecom-popper-trigger, [class*='popper-trigger']")
-      .first();
+      .filter({ hasNotText: /曝光量/ })
+      .locator(".content-ecom-popper-trigger, [class*='popper-trigger']");
+    const byLabel = this.subdivisionSelectTrigger(row, "指定品牌");
+    const bySecondSelect = multiSelect.nth(0);
     const pageWide = this.contentRoot()
       .locator(".content-ecom-select, [class*='content-ecom-select']")
       .filter({ hasText: /指定\s*品牌|竞品\s*品牌/ })
+      .filter({ hasNotText: /全行业/ })
       .locator(".content-ecom-popper-trigger, [class*='popper-trigger']")
       .first();
 
-    return byLabel.or(byStructure).or(pageWide);
+    return bySecondSelect.or(byLabel).or(pageWide);
   }
 
   async submitIndustryContentQuery(): Promise<void> {

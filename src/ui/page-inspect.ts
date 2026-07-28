@@ -14,6 +14,7 @@ export interface PageInspection {
 
 const MARKER_DEFINITIONS = [
   { id: "指定品牌", pattern: /指定\s*品牌/ },
+  { id: "全行业", pattern: /全行业/ },
   { id: "竞品品牌", pattern: /竞品\s*品牌/ },
   { id: "截取方式", pattern: /截取\s*方式/ },
   { id: "细分筛选", pattern: /细分\s*筛选/ },
