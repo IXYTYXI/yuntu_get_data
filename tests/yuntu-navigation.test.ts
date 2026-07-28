@@ -37,6 +37,20 @@ class NavigatingFakePage {
     }
   }
 
+  async waitForLoadState(_state?: string, _options?: { timeout?: number }): Promise<void> {
+    return;
+  }
+
+  getByText(_pattern: string | RegExp): {
+    first: () => { waitFor: (_options?: { state?: string; timeout?: number }) => Promise<void> };
+  } {
+    return {
+      first: () => ({
+        waitFor: async () => undefined,
+      }),
+    };
+  }
+
   locator(_selector: string): {
     first: () => { waitFor: (_options?: { state?: string; timeout?: number }) => Promise<void> };
   } {

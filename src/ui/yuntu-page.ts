@@ -109,6 +109,8 @@ export function matchesNavigationQuery(
 }
 
 async function waitForCollectionPageReady(page: Page): Promise<void> {
+  await page.waitForLoadState("networkidle", { timeout: 45_000 }).catch(() => undefined);
+
   const dateInput = page.locator(dateRangeInputSelector()).first();
   try {
     await dateInput.waitFor({ state: "visible", timeout: 60_000 });
@@ -119,7 +121,21 @@ async function waitForCollectionPageReady(page: Page): Promise<void> {
     );
   }
 
-  await page.waitForTimeout(1500);
+  if (isIndustryInspirationPageUrl(page.url())) {
+    try {
+      await page
+        .getByText(/指定\s*品牌/)
+        .first()
+        .waitFor({ state: "visible", timeout: 60_000 });
+    } catch {
+      throw new CollectorFailure(
+        "SELECTOR_NOT_FOUND",
+        "Industry content filters did not finish loading after navigation",
+      );
+    }
+  }
+
+  await page.waitForTimeout(2000);
 }
 
 export async function ensureCollectionPage(
@@ -439,7 +455,13 @@ export class YuntuPage {
     const row = this.subdivisionFilterRow();
     const trigger =
       this.selectors.extractionMethodTrigger === undefined
-        ? this.subdivisionSelectTrigger(row, "截取方式")
+        ? this.subdivisionSelectTrigger(row, "截取方式").or(
+            this.page
+              .locator(".content-ecom-select, [class*='content-ecom-select']")
+              .filter({ hasText: /截取\s*方式/ })
+              .locator(".content-ecom-popper-trigger, [class*='popper-trigger']")
+              .first(),
+          )
         : this.page.locator(this.selectors.extractionMethodTrigger).first();
 
     await this.clickVisible(trigger, "extraction method trigger");
@@ -468,25 +490,36 @@ export class YuntuPage {
   }
 
   private subdivisionFilterRow(): Locator {
-    return this.page
-      .locator("div, section, form, [class*='filter']")
-      .filter({ hasText: "细分筛选" })
-      .filter({ hasText: "指定品牌" })
-      .filter({ hasText: "截取方式" })
-      .first()
-      .or(
-        this.page
-          .locator("div, section, form, [class*='filter']")
-          .filter({ hasText: "细分筛选" })
-          .filter({ hasText: "指定品牌" })
-          .first(),
-      );
+    const container = "div, section, form, [class*='filter'], [class*='Filter']";
+    const withHeader = this.page
+      .locator(container)
+      .filter({ hasText: /细分\s*筛选/ })
+      .filter({ hasText: /指定\s*品牌/ })
+      .first();
+    const brandAndMethod = this.page
+      .locator(container)
+      .filter({ hasText: /指定\s*品牌/ })
+      .filter({ hasText: /截取\s*方式/ })
+      .first();
+    const brandOnly = this.page
+      .locator(container)
+      .filter({ hasText: /指定\s*品牌/ })
+      .first();
+
+    return withHeader.or(brandAndMethod).or(brandOnly);
   }
 
   private subdivisionSelectTrigger(row: Locator, label: string): Locator {
+    const pattern =
+      label === "指定品牌"
+        ? /指定\s*品牌/
+        : label === "截取方式"
+          ? /截取\s*方式/
+          : label;
+
     return row
       .locator(".content-ecom-select, [class*='content-ecom-select']")
-      .filter({ hasText: label })
+      .filter({ hasText: pattern })
       .locator(".content-ecom-popper-trigger, [class*='popper-trigger']")
       .first();
   }
@@ -497,28 +530,72 @@ export class YuntuPage {
     }
 
     const row = this.subdivisionFilterRow();
-    return this.subdivisionSelectTrigger(row, "指定品牌");
+    const inRow = this.subdivisionSelectTrigger(row, "指定品牌");
+    const pageWide = this.page
+      .locator(".content-ecom-select, [class*='content-ecom-select']")
+      .filter({ hasText: /指定\s*品牌/ })
+      .locator(".content-ecom-popper-trigger, [class*='popper-trigger']")
+      .first();
+
+    return inRow.or(pageWide);
+  }
+
+  private async expandSubdivisionFiltersIfCollapsed(): Promise<void> {
+    for (const label of ["展开筛选", "更多筛选", "高级筛选", "展开"]) {
+      const trigger = this.page.getByText(label, { exact: true }).first();
+      if (await trigger.isVisible().catch(() => false)) {
+        await this.clickVisible(trigger, "subdivision filter expand");
+        await this.page.waitForTimeout(800);
+        return;
+      }
+    }
+  }
+
+  private async waitForSubdivisionFilterRow(): Promise<Locator> {
+    const row = this.subdivisionFilterRow();
+    await row.waitFor({ state: "visible", timeout: 25_000 });
+    return row;
   }
 
   private async ensureSubdivisionFiltersReady(): Promise<void> {
-    await this.ensureIndustryContentLeaderboardTab();
-    const row = this.subdivisionFilterRow();
-    try {
-      await row.waitFor({ state: "visible", timeout: 60_000 });
-    } catch {
-      await this.navigateToIndustryInspirationModule();
+    await this.dismissBlockingOverlays();
+    await this.page
+      .waitForLoadState("networkidle", { timeout: 45_000 })
+      .catch(() => undefined);
+
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      await this.ensureIndustryContentLeaderboardTab();
+      await this.expandSubdivisionFiltersIfCollapsed();
+
       try {
-        await row.waitFor({ state: "visible", timeout: 60_000 });
+        const row = await this.waitForSubdivisionFilterRow();
+        await this.guardedDomOperation(() => row.scrollIntoViewIfNeeded());
+        await this.page.waitForTimeout(500);
+        return;
       } catch {
-        throw new CollectorFailure(
-          "SELECTOR_NOT_FOUND",
-          `细分筛选（指定品牌 / 截取方式）未出现。请确认在 内容 → 行业灵感激发 → 行业内容榜，且 pageUrlPrefix 不是 ta_content。当前路径: ${safePagePath(this.page.url())}`,
-        );
+        await this.guardedDomOperation(async () => {
+          await this.page.evaluate(() => {
+            window.scrollBy(0, Math.max(400, window.innerHeight * 0.4));
+          });
+        });
+        await this.page.waitForTimeout(1500);
       }
     }
 
-    await this.guardedDomOperation(() => row.scrollIntoViewIfNeeded());
-    await this.page.waitForTimeout(500);
+    await this.navigateToIndustryInspirationModule();
+    await this.expandSubdivisionFiltersIfCollapsed();
+
+    try {
+      const row = await this.waitForSubdivisionFilterRow();
+      await this.guardedDomOperation(() => row.scrollIntoViewIfNeeded());
+      await this.page.waitForTimeout(500);
+      return;
+    } catch {
+      throw new CollectorFailure(
+        "SELECTOR_NOT_FOUND",
+        `细分筛选（指定品牌 / 截取方式）未出现。请在 9222 Chrome 同一 tab 手动打开 industryContent 页，确认已登录且能看到「指定品牌」。当前路径: ${safePagePath(this.page.url())}`,
+      );
+    }
   }
 
   private async clearSpecifiedBrandTags(): Promise<void> {
@@ -734,7 +811,11 @@ export class YuntuPage {
       return true;
     }
 
-    return isIndustryInspirationPageUrl(this.page.url());
+    return this.page
+      .getByText(/指定\s*品牌/)
+      .first()
+      .isVisible()
+      .catch(() => false);
   }
 
   private async waitForIndustryInspirationModule(): Promise<void> {
