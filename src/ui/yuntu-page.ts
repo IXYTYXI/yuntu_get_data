@@ -436,10 +436,13 @@ export class YuntuPage {
 
     await this.ensureSubdivisionFiltersReady();
 
-    const picker = await this.resolveDateRangePicker();
-    const dateInput = this.dateInputInPicker(picker);
-    await this.waitForVisible(dateInput, "date range input");
-    await this.guardedDomOperation(() => picker.scrollIntoViewIfNeeded());
+    const { picker, dateInput } = await this.resolveDateRangeControls();
+    await this.guardedDomOperation(() => dateInput.scrollIntoViewIfNeeded()).catch(
+      () => undefined,
+    );
+    await this.guardedDomOperation(() => picker.scrollIntoViewIfNeeded()).catch(
+      () => undefined,
+    );
 
     const beforeValue = await this.guardedDomOperation(() => dateInput.inputValue());
     await this.selectDateRangeQuickOption(picker, quickSelectLabels, days);
@@ -471,34 +474,68 @@ export class YuntuPage {
     }
   }
 
-  private async resolveDateRangePicker(): Promise<Locator> {
-    const row = this.subdivisionFilterRow();
-    const pickerSelectors = [
-      ".content-ecom-yuntu-yuntu-date-picker",
-      ".content-ecom-date-picker",
-      "[class*='yuntu-date-picker']",
+  private async resolveDateRangeControls(): Promise<{
+    picker: Locator;
+    dateInput: Locator;
+  }> {
+    const placeholder = "开始时间 ~ 结束时间";
+    const inputSelectors = [
+      `input[placeholder="${placeholder}"]`,
+      'input[placeholder*="开始时间"]',
+      `${dateRangeInputSelector()}`,
     ];
 
-    if (await row.isVisible().catch(() => false)) {
-      for (const selector of pickerSelectors) {
-        const scoped = row.locator(selector).first();
-        if (await scoped.isVisible().catch(() => false)) {
-          return scoped;
-        }
-      }
-    }
+    const searchRoots: Array<Page | Frame> = [
+      this.contentRoot(),
+      this.page,
+      ...this.page.frames(),
+    ];
 
-    for (const selector of pickerSelectors) {
-      const candidate = this.page.locator(selector).first();
-      if (await candidate.isVisible().catch(() => false)) {
-        return candidate;
+    for (const root of searchRoots) {
+      for (const selector of inputSelectors) {
+        const dateInput = root.locator(selector).first();
+        if (!(await dateInput.isVisible().catch(() => false))) {
+          continue;
+        }
+
+        const picker = dateInput
+          .locator("xpath=ancestor::*[contains(@class,'date-picker')][1]")
+          .first()
+          .or(root.locator(".content-ecom-yuntu-yuntu-date-picker").first())
+          .or(root.locator(".content-ecom-date-picker").first());
+
+        return { picker, dateInput };
+      }
+
+      const basicFilter = root
+        .locator("div, section, form")
+        .filter({ hasText: /基础\s*筛选/ })
+        .first();
+      if (await basicFilter.isVisible().catch(() => false)) {
+        const nestedInput = basicFilter
+          .locator(`input[placeholder="${placeholder}"]`)
+          .first()
+          .or(basicFilter.locator('input[placeholder*="开始时间"]').first())
+          .or(basicFilter.locator("input").first());
+        if (await nestedInput.isVisible().catch(() => false)) {
+          const picker = basicFilter
+            .locator(".content-ecom-yuntu-yuntu-date-picker, .content-ecom-date-picker")
+            .first()
+            .or(root.locator(".content-ecom-yuntu-yuntu-date-picker").first());
+          return { picker, dateInput: nestedInput };
+        }
       }
     }
 
     throw new CollectorFailure(
       "SELECTOR_NOT_FOUND",
-      "Date range picker not found on 行业内容榜; confirm pageUrlPrefix is industryContent",
+      "Date range input not found under 基础筛选; confirm the date field is visible on industryContent",
     );
+  }
+
+  private async resolveDateRangePicker(): Promise<Locator> {
+    const { picker } = await this.resolveDateRangeControls();
+    return picker;
   }
 
   private dateInputInPicker(picker: Locator): Locator {
