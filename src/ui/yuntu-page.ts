@@ -1,4 +1,4 @@
-import type { Browser, Locator, Page } from "playwright";
+import type { Browser, Frame, Locator, Page } from "playwright";
 
 import {
   CollectorFailure,
@@ -122,20 +122,10 @@ async function waitForCollectionPageReady(page: Page): Promise<void> {
   }
 
   if (isIndustryInspirationPageUrl(page.url())) {
-    try {
-      await page
-        .getByText(/指定\s*品牌/)
-        .first()
-        .waitFor({ state: "visible", timeout: 60_000 });
-    } catch {
-      throw new CollectorFailure(
-        "SELECTOR_NOT_FOUND",
-        "Industry content filters did not finish loading after navigation",
-      );
-    }
+    await page.waitForTimeout(5000);
+  } else {
+    await page.waitForTimeout(2000);
   }
-
-  await page.waitForTimeout(2000);
 }
 
 export async function ensureCollectionPage(
@@ -176,8 +166,8 @@ export async function ensureCollectionPage(
 
   try {
     await page.goto(destination, {
-      waitUntil: "domcontentloaded",
-      timeout: 60_000,
+      waitUntil: "load",
+      timeout: 90_000,
     });
   } catch (error) {
     const detail =
@@ -331,6 +321,8 @@ function targetPageSelectionFailure(): CollectorFailure {
 }
 
 export class YuntuPage {
+  private filterScope: Page | Frame | null = null;
+
   constructor(
     private readonly page: Page,
     private readonly selectors: CollectionConfig["selectors"],
@@ -456,7 +448,7 @@ export class YuntuPage {
     const trigger =
       this.selectors.extractionMethodTrigger === undefined
         ? this.subdivisionSelectTrigger(row, "截取方式").or(
-            this.page
+            this.contentRoot()
               .locator(".content-ecom-select, [class*='content-ecom-select']")
               .filter({ hasText: /截取\s*方式/ })
               .locator(".content-ecom-popper-trigger, [class*='popper-trigger']")
@@ -489,24 +481,90 @@ export class YuntuPage {
     await this.searchCompetitorBrands([brandName]);
   }
 
+  private contentRoot(): Page | Frame {
+    return this.filterScope ?? this.page;
+  }
+
+  private static readonly filterLabelPatterns: RegExp[] = [
+    /指定\s*品牌/,
+    /截取\s*方式/,
+    /细分\s*筛选/,
+    /竞品\s*品牌/,
+  ];
+
+  private async resolveFilterScope(): Promise<Page | Frame> {
+    for (const frame of this.page.frames()) {
+      for (const pattern of YuntuPage.filterLabelPatterns) {
+        const candidate = frame.getByText(pattern).first();
+        if (await candidate.isVisible().catch(() => false)) {
+          this.filterScope = frame;
+          return frame;
+        }
+      }
+    }
+
+    this.filterScope = this.page;
+    return this.page;
+  }
+
+  private async anyFilterLabelVisible(): Promise<boolean> {
+    await this.resolveFilterScope();
+    for (const pattern of YuntuPage.filterLabelPatterns) {
+      if (
+        await this.contentRoot()
+          .getByText(pattern)
+          .first()
+          .isVisible()
+          .catch(() => false)
+      ) {
+        return true;
+      }
+    }
+
+    for (const frame of this.page.frames()) {
+      for (const pattern of YuntuPage.filterLabelPatterns) {
+        if (
+          await frame
+            .getByText(pattern)
+            .first()
+            .isVisible()
+            .catch(() => false)
+        ) {
+          this.filterScope = frame;
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
   private subdivisionFilterRow(): Locator {
+    const root = this.contentRoot();
     const container = "div, section, form, [class*='filter'], [class*='Filter']";
-    const withHeader = this.page
+    const withHeader = root
       .locator(container)
       .filter({ hasText: /细分\s*筛选/ })
       .filter({ hasText: /指定\s*品牌/ })
       .first();
-    const brandAndMethod = this.page
+    const brandAndMethod = root
       .locator(container)
       .filter({ hasText: /指定\s*品牌/ })
       .filter({ hasText: /截取\s*方式/ })
       .first();
-    const brandOnly = this.page
+    const brandOnly = root
       .locator(container)
       .filter({ hasText: /指定\s*品牌/ })
       .first();
+    const competitorBrand = root
+      .locator(container)
+      .filter({ hasText: /竞品\s*品牌/ })
+      .first();
 
-    return withHeader.or(brandAndMethod).or(brandOnly);
+    return withHeader
+      .or(brandAndMethod)
+      .or(brandOnly)
+      .or(competitorBrand);
   }
 
   private subdivisionSelectTrigger(row: Locator, label: string): Locator {
@@ -531,9 +589,9 @@ export class YuntuPage {
 
     const row = this.subdivisionFilterRow();
     const inRow = this.subdivisionSelectTrigger(row, "指定品牌");
-    const pageWide = this.page
+    const pageWide = this.contentRoot()
       .locator(".content-ecom-select, [class*='content-ecom-select']")
-      .filter({ hasText: /指定\s*品牌/ })
+      .filter({ hasText: /指定\s*品牌|竞品\s*品牌/ })
       .locator(".content-ecom-popper-trigger, [class*='popper-trigger']")
       .first();
 
@@ -552,9 +610,28 @@ export class YuntuPage {
   }
 
   private async waitForSubdivisionFilterRow(): Promise<Locator> {
-    const row = this.subdivisionFilterRow();
-    await row.waitFor({ state: "visible", timeout: 25_000 });
-    return row;
+    const deadline = Date.now() + 90_000;
+    while (Date.now() < deadline) {
+      await this.resolveFilterScope();
+      const row = this.subdivisionFilterRow();
+      if (await row.isVisible().catch(() => false)) {
+        return row;
+      }
+      if (await this.anyFilterLabelVisible()) {
+        try {
+          await row.waitFor({ state: "visible", timeout: 5000 });
+          return row;
+        } catch {
+          // continue polling
+        }
+      }
+      await this.page.waitForTimeout(1500);
+    }
+
+    throw new CollectorFailure(
+      "SELECTOR_NOT_FOUND",
+      "Timed out waiting for subdivision filters",
+    );
   }
 
   private async ensureSubdivisionFiltersReady(): Promise<void> {
@@ -812,7 +889,7 @@ export class YuntuPage {
     }
 
     return this.page
-      .getByText(/指定\s*品牌/)
+      .getByText(/指定\s*品牌|竞品\s*品牌/)
       .first()
       .isVisible()
       .catch(() => false);
