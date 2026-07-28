@@ -25,7 +25,7 @@ const MARKER_DEFINITIONS = [
   { id: "暂无数据", pattern: /暂无数据|无数据|没有数据/ },
 ] as const;
 
-const EXPECTED_FILTER_MARKERS = ["指定品牌", "截取方式"] as const;
+const EXPECTED_FILTER_MARKERS = ["细分筛选", "截取方式"] as const;
 
 export async function inspectYuntuPage(page: Page): Promise<PageInspection> {
   let pathname = safePathname(page.url());
@@ -64,7 +64,7 @@ export async function inspectYuntuPage(page: Page): Promise<PageInspection> {
     markersMissing,
     requiresSignIn:
       markersFound.includes("登录提示") &&
-      !markersFound.includes("指定品牌") &&
+      !markersFound.includes("细分筛选") &&
       !markersFound.includes("截取方式"),
     onIndustryContentPath: pathname.includes(
       "/content_lab/inspiration/industryContent",
@@ -90,13 +90,16 @@ export function formatPageInspectionSummary(
 }
 
 export function hasSubdivisionFilters(inspection: PageInspection): boolean {
-  if (inspection.markersMissing.length === 0) {
+  if (
+    inspection.markersFound.includes("指定品牌") ||
+    inspection.markersFound.includes("竞品品牌")
+  ) {
     return true;
   }
 
   return (
-    inspection.markersFound.includes("指定品牌") ||
-    inspection.markersFound.includes("竞品品牌")
+    inspection.markersFound.includes("细分筛选") &&
+    inspection.markersFound.includes("截取方式")
   );
 }
 

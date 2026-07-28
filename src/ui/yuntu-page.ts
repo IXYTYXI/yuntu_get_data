@@ -541,6 +541,7 @@ export class YuntuPage {
     for (const brandName of brandNames) {
       await this.addSpecifiedBrandInSubdivisionFilter(brandName);
     }
+    await this.submitIndustryContentQuery();
   }
 
   async searchCompetitorBrand(brandName: string): Promise<void> {
@@ -608,6 +609,11 @@ export class YuntuPage {
   private subdivisionFilterRow(): Locator {
     const root = this.contentRoot();
     const container = "div, section, form, [class*='filter'], [class*='Filter']";
+    const subdivisionAndMethod = root
+      .locator(container)
+      .filter({ hasText: /细分\s*筛选/ })
+      .filter({ hasText: /截取\s*方式/ })
+      .first();
     const withHeader = root
       .locator(container)
       .filter({ hasText: /细分\s*筛选/ })
@@ -627,7 +633,8 @@ export class YuntuPage {
       .filter({ hasText: /竞品\s*品牌/ })
       .first();
 
-    return withHeader
+    return subdivisionAndMethod
+      .or(withHeader)
       .or(brandAndMethod)
       .or(brandOnly)
       .or(competitorBrand);
@@ -654,14 +661,35 @@ export class YuntuPage {
     }
 
     const row = this.subdivisionFilterRow();
-    const inRow = this.subdivisionSelectTrigger(row, "指定品牌");
+    const byLabel = this.subdivisionSelectTrigger(row, "指定品牌");
+    const byStructure = row
+      .locator(".content-ecom-select, [class*='content-ecom-select']")
+      .filter({ hasNotText: /截取\s*方式/ })
+      .filter({ hasNotText: /核心人群/ })
+      .filter({ hasNotText: /年龄/ })
+      .filter({ hasNotText: /性别/ })
+      .filter({ hasNotText: /八大人群/ })
+      .locator(".content-ecom-popper-trigger, [class*='popper-trigger']")
+      .first();
     const pageWide = this.contentRoot()
       .locator(".content-ecom-select, [class*='content-ecom-select']")
       .filter({ hasText: /指定\s*品牌|竞品\s*品牌/ })
       .locator(".content-ecom-popper-trigger, [class*='popper-trigger']")
       .first();
 
-    return inRow.or(pageWide);
+    return byLabel.or(byStructure).or(pageWide);
+  }
+
+  async submitIndustryContentQuery(): Promise<void> {
+    this.assertCurrentPageTrusted();
+    const queryButton = this.contentRoot()
+      .getByRole("button", { name: "查询" })
+      .first()
+      .or(this.contentRoot().getByText("查询", { exact: true }).first());
+    if (await queryButton.isVisible().catch(() => false)) {
+      await this.clickVisible(queryButton, "industry content query button");
+      await this.page.waitForTimeout(3000);
+    }
   }
 
   private async expandSubdivisionFiltersIfCollapsed(): Promise<void> {

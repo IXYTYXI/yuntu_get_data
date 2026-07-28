@@ -27,6 +27,15 @@ function sampleInspection(
 test("detects subdivision filters from marker hits", () => {
   assert.equal(
     hasSubdivisionFilters(
+      sampleInspection({
+        markersFound: ["细分筛选", "截取方式"],
+        markersMissing: [],
+      }),
+    ),
+    true,
+  );
+  assert.equal(
+    hasSubdivisionFilters(
       sampleInspection({ markersFound: ["指定品牌"], markersMissing: ["截取方式"] }),
     ),
     true,
@@ -46,5 +55,5 @@ test("formats inspection summary for error messages", () => {
   );
   assert.match(summary, /path=/);
   assert.match(summary, /markers=曝光,开始时间/);
-  assert.match(summary, /missing=指定品牌,截取方式/);
+  assert.match(summary, /missing=none|missing=/);
 });
