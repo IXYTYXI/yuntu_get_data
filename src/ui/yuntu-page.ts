@@ -114,11 +114,11 @@ export function matchesNavigationQuery(
 }
 
 async function waitForCollectionPageReady(page: Page): Promise<void> {
-  await page.waitForLoadState("networkidle", { timeout: 45_000 }).catch(() => undefined);
+  await page.waitForLoadState("load", { timeout: 30_000 }).catch(() => undefined);
 
   const dateInput = page.locator(dateRangeInputSelector()).first();
   try {
-    await dateInput.waitFor({ state: "visible", timeout: 60_000 });
+    await dateInput.waitFor({ state: "visible", timeout: 30_000 });
   } catch {
     throw new CollectorFailure(
       "SELECTOR_NOT_FOUND",
@@ -127,9 +127,9 @@ async function waitForCollectionPageReady(page: Page): Promise<void> {
   }
 
   if (isIndustryInspirationPageUrl(page.url())) {
-    await page.waitForTimeout(5000);
-  } else {
     await page.waitForTimeout(2000);
+  } else {
+    await page.waitForTimeout(1000);
   }
 }
 
@@ -361,11 +361,9 @@ export class YuntuPage {
 
   private async prepareIndustryContentView(): Promise<void> {
     await this.dismissBlockingOverlays();
-    await this.page
-      .waitForLoadState("networkidle", { timeout: 45_000 })
-      .catch(() => undefined);
+    await this.page.waitForLoadState("load", { timeout: 30_000 }).catch(() => undefined);
 
-    for (let attempt = 0; attempt < 5; attempt += 1) {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
       const inspection = await inspectYuntuPage(this.page);
       if (inspection.requiresSignIn) {
         throw new CollectorFailure(
@@ -737,31 +735,29 @@ export class YuntuPage {
   }
 
   private async waitForSubdivisionFilterRow(): Promise<Locator> {
-    const deadline = Date.now() + 90_000;
-    while (Date.now() < deadline) {
-      const inspection = await inspectYuntuPage(this.page);
-      if (inspection.requiresSignIn) {
-        throw new CollectorFailure(
-          "AUTH_REQUIRED",
-          "Sign in to Yuntu in the debugging Chrome window and select a Yuntu tab",
-        );
-      }
+    const inspection = await inspectYuntuPage(this.page);
+    if (inspection.requiresSignIn) {
+      throw new CollectorFailure(
+        "AUTH_REQUIRED",
+        "Sign in to Yuntu in the debugging Chrome window and select a Yuntu tab",
+      );
+    }
 
-      await this.resolveFilterScope();
-      const row = this.subdivisionFilterRow();
+    await this.resolveFilterScope();
+    const row = this.subdivisionFilterRow();
+
+    if (hasSubdivisionFilters(inspection) || (await this.anyFilterLabelVisible())) {
+      await this.guardedDomOperation(() => row.scrollIntoViewIfNeeded()).catch(
+        () => undefined,
+      );
+      return row;
+    }
+
+    const deadline = Date.now() + 45_000;
+    while (Date.now() < deadline) {
       if (await row.isVisible().catch(() => false)) {
         return row;
       }
-
-      if (hasSubdivisionFilters(inspection) || (await this.anyFilterLabelVisible())) {
-        try {
-          await row.waitFor({ state: "visible", timeout: 5000 });
-          return row;
-        } catch {
-          // continue polling
-        }
-      }
-
       await this.page.waitForTimeout(1500);
     }
 

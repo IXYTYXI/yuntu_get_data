@@ -173,15 +173,21 @@ export async function main(
 
   try {
     const config = await loadCollectionConfig(requireConfigPath(options));
+    logger.log("[yuntu] Connecting to Chrome DevTools...");
     return await withConnectedBrowser(
-      (cdpUrl) => chromium.connectOverCDP(cdpUrl),
+      (cdpUrl) =>
+        chromium.connectOverCDP(cdpUrl, {
+          timeout: 30_000,
+        }),
       options.cdpUrl,
       async (browser) => {
+        logger.log("[yuntu] Connected. Selecting Yuntu tab...");
         const page = findYuntuPage(
           browser,
           config.pageUrlPrefix,
           options.pageIndex,
         );
+        logger.log("[yuntu] Navigating to collection page...");
         await ensureCollectionPage(
           page,
           config.pageUrlPrefix,
@@ -203,9 +209,11 @@ export async function main(
           isTaContentInsightPageUrl(page.url()) ||
           isTaContentInsightPageUrl(config.pageUrlPrefix)
         ) {
+          logger.log("[yuntu] Preparing industry content filters...");
           await yuntuPage.navigateToIndustryInspirationModule();
         }
 
+        logger.log("[yuntu] Applying filters and collecting...");
         await yuntuPage.applyVisibleFilters();
         const records = config.criteria
           ? await collectMaterialsWithCriteria(
@@ -213,6 +221,7 @@ export async function main(
               yuntuPage,
               config,
               options.dryRun,
+              logger,
             )
           : await collectMaterials(
               page,
@@ -226,6 +235,9 @@ export async function main(
             );
 
         await writeOutput(records, config.output);
+        logger.log(
+          `[yuntu] Done. ${records.length} record(s) -> ${config.output.path}`,
+        );
         return 0;
       },
     );
@@ -240,6 +252,7 @@ async function collectMaterialsWithCriteria(
   yuntuPage: YuntuPage,
   config: CollectionConfig,
   dryRun: boolean,
+  logger: CliLogger = console,
 ): Promise<MaterialRecord[]> {
   const criteria = config.criteria;
   if (criteria === undefined) {
@@ -247,8 +260,10 @@ async function collectMaterialsWithCriteria(
   }
 
   const records: MaterialRecord[] = [];
+  logger.log("[yuntu] Setting date range...");
   await yuntuPage.applyDateRangeDays(criteria.dateRangeDays);
   if (criteria.extractionMethodLabel !== undefined) {
+    logger.log("[yuntu] Setting extraction method...");
     await yuntuPage.applyExtractionMethod(criteria.extractionMethodLabel);
   }
 
@@ -256,6 +271,7 @@ async function collectMaterialsWithCriteria(
   const rowLimit = Math.min(criteria.maxResultsPerBrand, config.resultLimit);
 
   if (brandSelectionMode === "combined") {
+    logger.log("[yuntu] Selecting brands (combined)...");
     await yuntuPage.searchCompetitorBrands(criteria.brands);
     const rows = filterVideoListRows(await readVideoListRows(page), {
       minExposure: criteria.minExposure,
@@ -264,6 +280,7 @@ async function collectMaterialsWithCriteria(
       maxResults: rowLimit,
     });
 
+    logger.log(`[yuntu] Collecting ${rows.length} material(s)...`);
     for (const row of rows) {
       records.push(
         await collectMaterial(
@@ -283,6 +300,7 @@ async function collectMaterialsWithCriteria(
   }
 
   for (const brandName of criteria.brands) {
+    logger.log(`[yuntu] Selecting brand: ${brandName}...`);
     await yuntuPage.searchCompetitorBrand(brandName);
     const rows = filterVideoListRows(await readVideoListRows(page), {
       minExposure: criteria.minExposure,
@@ -291,6 +309,7 @@ async function collectMaterialsWithCriteria(
       maxResults: rowLimit,
     });
 
+    logger.log(`[yuntu] Collecting ${rows.length} material(s) for ${brandName}...`);
     for (const row of rows) {
       records.push(
         await collectMaterial(
