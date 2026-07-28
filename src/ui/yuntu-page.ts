@@ -8,11 +8,16 @@ import {
 import {
   dateRangeInputSelector,
   dateRangeQuickSelectLabel,
+  dateRangeQuickSelectLabelCandidates,
+  dateRangeQuickSelectPattern,
   inclusiveDayCount,
   parseDateRangeValue,
 } from "./date-range.js";
 
 export const DEFAULT_YUNTU_PAGE_PREFIX = "https://yuntu.oceanengine.com/";
+/** 内容 → 灵感激发 → 行业灵感激发 / 行业内容（真实落地 path，不是 ta_content） */
+export const INDUSTRY_INSPIRATION_PAGE_PREFIX =
+  "https://yuntu.oceanengine.com/yuntu_brand/ecom/content_new/creative/content_lab/inspiration/industryContent";
 export const TRUSTED_PAGE_FAILURE_MESSAGE =
   "Configured Yuntu page is outside the trusted scope";
 const TARGET_PAGE_SELECTION_FAILURE_MESSAGE =
@@ -57,6 +62,32 @@ export function buildCollectionPageUrl(
   }
 
   return target.toString();
+}
+
+export function isTaContentInsightPageUrl(location: string): boolean {
+  try {
+    return new URL(location).pathname.includes("/ta_content");
+  } catch {
+    return false;
+  }
+}
+
+export function isIndustryInspirationPageUrl(location: string): boolean {
+  try {
+    return new URL(location).pathname.includes(
+      "/content_lab/inspiration/industryContent",
+    );
+  } catch {
+    return false;
+  }
+}
+
+function safePagePath(location: string): string {
+  try {
+    return new URL(location).pathname;
+  } catch {
+    return "[invalid-url]";
+  }
 }
 
 export function matchesNavigationQuery(
@@ -306,23 +337,36 @@ export class YuntuPage {
     }
   }
 
+  async navigateToIndustryInspirationModule(): Promise<void> {
+    this.assertCurrentPageTrusted();
+    if (await this.isOnIndustryInspirationModule()) {
+      await this.ensureIndustryContentLeaderboardTab();
+      return;
+    }
+
+    await this.clickIndustryInspirationEntry();
+    await this.waitForIndustryInspirationModule();
+  }
+
   async applyDateRangeDays(days: number): Promise<void> {
     this.assertCurrentPageTrusted();
-    const quickSelectLabel = dateRangeQuickSelectLabel(days);
-    if (quickSelectLabel === null) {
+    const quickSelectLabels = dateRangeQuickSelectLabelCandidates(days);
+    if (quickSelectLabels.length === 0) {
       throw new CollectorFailure(
         "SELECTOR_NOT_FOUND",
         "Configured date range days is not supported by the Yuntu quick select",
       );
     }
 
-    const picker = this.page.locator(".content-ecom-yuntu-yuntu-date-picker").first();
-    const dateInput = this.page.locator(dateRangeInputSelector()).first();
+    await this.ensureSubdivisionFiltersReady();
+
+    const picker = await this.resolveDateRangePicker();
+    const dateInput = this.dateInputInPicker(picker);
     await this.waitForVisible(dateInput, "date range input");
     await this.guardedDomOperation(() => picker.scrollIntoViewIfNeeded());
 
     const beforeValue = await this.guardedDomOperation(() => dateInput.inputValue());
-    await this.selectDateRangeQuickOption(picker, quickSelectLabel);
+    await this.selectDateRangeQuickOption(picker, quickSelectLabels, days);
     await this.page.waitForTimeout(1500);
 
     const afterValue = await this.guardedDomOperation(() => dateInput.inputValue());
@@ -331,7 +375,7 @@ export class YuntuPage {
       return;
     }
 
-    await this.selectDateRangeQuickOption(picker, quickSelectLabel);
+    await this.selectDateRangeQuickOption(picker, quickSelectLabels, days);
     await this.page.waitForTimeout(2000);
 
     const retriedValue = await this.guardedDomOperation(() => dateInput.inputValue());
@@ -351,21 +395,51 @@ export class YuntuPage {
     }
   }
 
+  private async resolveDateRangePicker(): Promise<Locator> {
+    const row = this.subdivisionFilterRow();
+    const pickerSelectors = [
+      ".content-ecom-yuntu-yuntu-date-picker",
+      ".content-ecom-date-picker",
+      "[class*='yuntu-date-picker']",
+    ];
+
+    if (await row.isVisible().catch(() => false)) {
+      for (const selector of pickerSelectors) {
+        const scoped = row.locator(selector).first();
+        if (await scoped.isVisible().catch(() => false)) {
+          return scoped;
+        }
+      }
+    }
+
+    for (const selector of pickerSelectors) {
+      const candidate = this.page.locator(selector).first();
+      if (await candidate.isVisible().catch(() => false)) {
+        return candidate;
+      }
+    }
+
+    throw new CollectorFailure(
+      "SELECTOR_NOT_FOUND",
+      "Date range picker not found on 行业内容榜; confirm pageUrlPrefix is industryContent",
+    );
+  }
+
+  private dateInputInPicker(picker: Locator): Locator {
+    return picker
+      .locator(`input[placeholder="开始时间 ~ 结束时间"]`)
+      .first()
+      .or(picker.locator("input").first());
+  }
+
   async applyExtractionMethod(label: string): Promise<void> {
     this.assertCurrentPageTrusted();
-    await this.ensureIndustryInspirationSection();
-    await this.ensureIndustryContentLeaderboardTab();
+    await this.ensureSubdivisionFiltersReady();
 
     const row = this.subdivisionFilterRow();
     const trigger =
       this.selectors.extractionMethodTrigger === undefined
-        ? row
-            .getByText("截取方式", { exact: true })
-            .locator(
-              "xpath=ancestor::*[contains(@class,'content-ecom-select')][1]",
-            )
-            .locator(".content-ecom-popper-trigger")
-            .first()
+        ? this.subdivisionSelectTrigger(row, "截取方式")
         : this.page.locator(this.selectors.extractionMethodTrigger).first();
 
     await this.clickVisible(trigger, "extraction method trigger");
@@ -382,8 +456,7 @@ export class YuntuPage {
 
   async searchCompetitorBrands(brandNames: readonly string[]): Promise<void> {
     this.assertCurrentPageTrusted();
-    await this.ensureIndustryInspirationSection();
-    await this.ensureIndustryContentLeaderboardTab();
+    await this.ensureSubdivisionFiltersReady();
     await this.clearSpecifiedBrandTags();
     for (const brandName of brandNames) {
       await this.addSpecifiedBrandInSubdivisionFilter(brandName);
@@ -399,6 +472,15 @@ export class YuntuPage {
       .locator("div, section, form, [class*='filter']")
       .filter({ hasText: "细分筛选" })
       .filter({ hasText: "指定品牌" })
+      .filter({ hasText: "截取方式" })
+      .first();
+  }
+
+  private subdivisionSelectTrigger(row: Locator, label: string): Locator {
+    return row
+      .locator(".content-ecom-select, [class*='content-ecom-select']")
+      .filter({ hasText: label })
+      .locator(".content-ecom-popper-trigger, [class*='popper-trigger']")
       .first();
   }
 
@@ -408,12 +490,28 @@ export class YuntuPage {
     }
 
     const row = this.subdivisionFilterRow();
-    return row
-      .getByText("指定品牌", { exact: true })
-      .locator("xpath=ancestor::*[contains(@class,'content-ecom-select')][1]")
-      .locator(".content-ecom-popper-trigger")
-      .first()
-      .or(row.locator(".content-ecom-select .content-ecom-popper-trigger").first());
+    return this.subdivisionSelectTrigger(row, "指定品牌");
+  }
+
+  private async ensureSubdivisionFiltersReady(): Promise<void> {
+    await this.ensureIndustryContentLeaderboardTab();
+    const row = this.subdivisionFilterRow();
+    try {
+      await row.waitFor({ state: "visible", timeout: 60_000 });
+    } catch {
+      await this.navigateToIndustryInspirationModule();
+      try {
+        await row.waitFor({ state: "visible", timeout: 60_000 });
+      } catch {
+        throw new CollectorFailure(
+          "SELECTOR_NOT_FOUND",
+          `细分筛选（指定品牌 / 截取方式）未出现。请确认在 内容 → 行业灵感激发 → 行业内容榜，且 pageUrlPrefix 不是 ta_content。当前路径: ${safePagePath(this.page.url())}`,
+        );
+      }
+    }
+
+    await this.guardedDomOperation(() => row.scrollIntoViewIfNeeded());
+    await this.page.waitForTimeout(500);
   }
 
   private async clearSpecifiedBrandTags(): Promise<void> {
@@ -495,6 +593,13 @@ export class YuntuPage {
       .locator(".content-ecom-tabs-tab, [role='tab']")
       .filter({ hasText: "行业内容榜" });
     const count = await this.guardedDomOperation(() => tabCandidates.count());
+    if (count === 0) {
+      throw new CollectorFailure(
+        "SELECTOR_NOT_FOUND",
+        "行业内容榜 tab not found; open 内容 → 行业灵感激发 first",
+      );
+    }
+
     for (let index = 0; index < count; index += 1) {
       const tab = tabCandidates.nth(index);
       if (!(await this.isVisible(tab, "industry content leaderboard tab"))) {
@@ -509,37 +614,133 @@ export class YuntuPage {
       await this.page.waitForTimeout(1500);
       return;
     }
+
+    throw new CollectorFailure(
+      "SELECTOR_NOT_FOUND",
+      "行业内容榜 tab is not visible on the current page",
+    );
   }
 
-  private async ensureIndustryInspirationSection(): Promise<void> {
+  private industryInspirationSidebarLink(): Locator {
+    if (this.selectors.industryInspirationNav !== undefined) {
+      return this.page.locator(this.selectors.industryInspirationNav).first();
+    }
     if (this.selectors.industryInspirationTab !== undefined) {
+      return this.page.locator(this.selectors.industryInspirationTab).first();
+    }
+
+    return this.page
+      .locator(
+        "aside, [class*='sidebar'], [class*='SideMenu'], [class*='side-menu'], [class*='layout-menu']",
+      )
+      .getByText("行业灵感激发", { exact: true })
+      .first();
+  }
+
+  private async clickIndustryInspirationEntry(): Promise<void> {
+    if (this.selectors.industryInspirationNav !== undefined) {
       await this.clickVisible(
-        this.page.locator(this.selectors.industryInspirationTab).first(),
-        "industry inspiration tab",
+        this.page.locator(this.selectors.industryInspirationNav).first(),
+        "industry inspiration nav",
       );
-      await this.page.waitForTimeout(1500);
       return;
     }
 
-    const tabCandidates = this.page
-      .locator(
-        ".content-ecom-tabs-tab, [role='tab'], .content-ecom-radio-button",
-      )
-      .filter({ hasText: "行业灵感激发" });
-    const count = await this.guardedDomOperation(() => tabCandidates.count());
+    const sidebarLink = this.industryInspirationSidebarLink();
+    if (await sidebarLink.isVisible().catch(() => false)) {
+      await this.clickVisible(sidebarLink, "industry inspiration sidebar");
+      return;
+    }
+
+    const linkCandidates = this.page.locator("a, [role='menuitem']").filter({
+      hasText: "行业灵感激发",
+    });
+    const count = await this.guardedDomOperation(() => linkCandidates.count());
     for (let index = 0; index < count; index += 1) {
-      const tab = tabCandidates.nth(index);
-      if (!(await this.isVisible(tab, "industry inspiration tab"))) {
+      const candidate = linkCandidates.nth(index);
+      if (!(await candidate.isVisible().catch(() => false))) {
         continue;
       }
-      const className =
-        (await tab.getAttribute("class").catch(() => null)) ?? "";
-      if (className.includes("active") || className.includes("checked")) {
-        return;
+      const box = await candidate.boundingBox().catch(() => null);
+      if (box !== null && box.x > 480) {
+        continue;
       }
-      await this.clickVisible(tab, "industry inspiration tab");
-      await this.page.waitForTimeout(1500);
+      await this.clickVisible(candidate, "industry inspiration sidebar");
       return;
+    }
+
+    await this.openContentMenuAndClickIndustryInspiration();
+  }
+
+  private async openContentMenuAndClickIndustryInspiration(): Promise<void> {
+    const header = this.page.locator("header, [class*='header']").first();
+    const contentNav = header.getByText("内容", { exact: true }).first();
+    await this.waitForVisible(contentNav, "top content navigation");
+    await this.guardedDomOperation(() => contentNav.hover());
+    await this.page.waitForTimeout(500);
+    if (
+      !(await this.page
+        .getByText("行业灵感激发", { exact: true })
+        .first()
+        .isVisible()
+        .catch(() => false))
+    ) {
+      await this.clickVisible(contentNav, "top content navigation");
+      await this.page.waitForTimeout(500);
+    }
+
+    const menuLink = this.page
+      .locator(
+        "[class*='dropdown'], [class*='submenu'], [class*='popover'], [class*='mega']",
+      )
+      .getByText("行业灵感激发", { exact: true })
+      .first();
+    await this.clickVisible(menuLink, "content menu industry inspiration link");
+  }
+
+  private async isOnIndustryInspirationModule(): Promise<boolean> {
+    if (isTaContentInsightPageUrl(this.page.url())) {
+      return false;
+    }
+
+    if (await this.subdivisionFilterRow().isVisible().catch(() => false)) {
+      return true;
+    }
+
+    return isIndustryInspirationPageUrl(this.page.url());
+  }
+
+  private async waitForIndustryInspirationModule(): Promise<void> {
+    try {
+      await this.page.waitForFunction(
+        () => !window.location.pathname.includes("/ta_content"),
+        { timeout: 60_000 },
+      );
+    } catch {
+      // SPA may keep pathname; rely on UI markers below.
+    }
+
+    await this.page.waitForTimeout(1500);
+
+    await this.ensureIndustryContentLeaderboardTab();
+
+    try {
+      await this.subdivisionFilterRow().waitFor({
+        state: "visible",
+        timeout: 60_000,
+      });
+    } catch {
+      throw new CollectorFailure(
+        "SELECTOR_NOT_FOUND",
+        `Could not reach 行业灵感激发 → 行业内容榜（细分筛选未出现）。当前路径: ${safePagePath(this.page.url())}`,
+      );
+    }
+
+    if (isTaContentInsightPageUrl(this.page.url())) {
+      throw new CollectorFailure(
+        "SELECTOR_NOT_FOUND",
+        "Still on TA content insight (ta_content). Configure pageUrlPrefix for industry inspiration and use 内容 → 行业灵感激发, not TA内容洞察",
+      );
     }
   }
 
@@ -619,37 +820,113 @@ export class YuntuPage {
 
   private async selectDateRangeQuickOption(
     picker: Locator,
-    quickSelectLabel: string,
+    quickSelectLabels: readonly string[],
+    days: number,
   ): Promise<void> {
-    const suffix = picker
-      .locator(".content-ecom-date-picker .content-ecom-input-suffix")
-      .first();
-    await this.waitForVisible(suffix, "date range picker trigger");
-    await this.guardedDomOperation(() => suffix.click({ force: true }));
+    await this.openDateRangePopover(picker);
+    const popover = await this.findVisibleDateRangePopover();
 
-    const popover = this.page.locator(
-      ".oc-content-ecom-daterange-picker__pop.content-ecom-popover-show",
-    );
-    try {
-      await this.guardedDomOperation(() =>
-        popover.waitFor({ state: "visible", timeout: 5000 }),
-      );
-    } catch (error) {
-      this.rethrowCollectorFailure(error);
-      throw new CollectorFailure(
-        "SELECTOR_NOT_FOUND",
-        "Date range picker popover did not open",
-      );
+    const pattern = dateRangeQuickSelectPattern(days);
+    if (pattern !== null) {
+      const patternOption = popover.getByText(pattern).first();
+      if (await patternOption.isVisible().catch(() => false)) {
+        await this.guardedDomOperation(() => patternOption.click());
+        await this.guardedDomOperation(() =>
+          popover
+            .waitFor({ state: "hidden", timeout: 10_000 })
+            .catch(() => undefined),
+        );
+        return;
+      }
     }
 
-    const quickOption = popover
-      .locator("a.content-ecom-link")
-      .filter({ hasText: quickSelectLabel })
+    for (const label of quickSelectLabels) {
+      const quickOption = popover
+        .locator("a.content-ecom-link, a, button, span, div")
+        .filter({ hasText: label })
+        .first();
+      if (await quickOption.isVisible().catch(() => false)) {
+        await this.guardedDomOperation(() => quickOption.click());
+        await this.guardedDomOperation(() =>
+          popover
+            .waitFor({ state: "hidden", timeout: 10_000 })
+            .catch(() => undefined),
+        );
+        return;
+      }
+    }
+
+    for (const label of quickSelectLabels) {
+      const pageOption = this.page
+        .locator(".content-ecom-popover-show, [class*='popover-show']")
+        .getByText(label, { exact: true })
+        .first();
+      if (await pageOption.isVisible().catch(() => false)) {
+        await this.guardedDomOperation(() => pageOption.click());
+        return;
+      }
+    }
+
+    if (pattern !== null) {
+      const pagePatternOption = this.page.getByText(pattern).first();
+      if (await pagePatternOption.isVisible().catch(() => false)) {
+        await this.guardedDomOperation(() => pagePatternOption.click());
+        return;
+      }
+    }
+
+    throw new CollectorFailure(
+      "SELECTOR_NOT_FOUND",
+      `Date range quick select not found (tried: ${quickSelectLabels.join(", ")}). Update collector code and open the date picker manually once to verify shortcuts exist.`,
+    );
+  }
+
+  private async openDateRangePopover(picker: Locator): Promise<void> {
+    const suffix = picker
+      .locator(
+        ".content-ecom-date-picker .content-ecom-input-suffix, .content-ecom-input-suffix",
+      )
       .first();
-    await this.waitForVisible(quickOption, "date range quick select option");
-    await this.guardedDomOperation(() => quickOption.click());
-    await this.guardedDomOperation(() =>
-      popover.waitFor({ state: "hidden", timeout: 10_000 }).catch(() => undefined),
+    const dateInput = this.dateInputInPicker(picker);
+
+    if (await suffix.isVisible().catch(() => false)) {
+      await this.guardedDomOperation(() => suffix.click({ force: true }));
+    } else {
+      await this.waitForVisible(dateInput, "date range input");
+      await this.guardedDomOperation(() => dateInput.click({ force: true }));
+    }
+
+    try {
+      await this.findVisibleDateRangePopover();
+    } catch {
+      await this.guardedDomOperation(() => picker.click({ force: true }).catch(() => undefined));
+      await this.findVisibleDateRangePopover();
+    }
+  }
+
+  private async findVisibleDateRangePopover(): Promise<Locator> {
+    const selectors = [
+      ".oc-content-ecom-daterange-picker__pop.content-ecom-popover-show",
+      ".content-ecom-date-picker-popover.content-ecom-popover-show",
+      ".content-ecom-popover-show:has(a.content-ecom-link)",
+      ".content-ecom-popover-show",
+    ];
+
+    for (const selector of selectors) {
+      const popover = this.page.locator(selector).last();
+      try {
+        await this.guardedDomOperation(() =>
+          popover.waitFor({ state: "visible", timeout: 5000 }),
+        );
+        return popover;
+      } catch {
+        continue;
+      }
+    }
+
+    throw new CollectorFailure(
+      "SELECTOR_NOT_FOUND",
+      "Date range picker popover did not open",
     );
   }
 

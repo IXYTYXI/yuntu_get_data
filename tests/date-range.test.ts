@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   dateRangeQuickSelectLabel,
+  dateRangeQuickSelectLabelCandidates,
   inclusiveDayCount,
   parseDateRangeValue,
 } from "../src/ui/date-range.js";
@@ -12,6 +13,7 @@ test("maps supported day counts to Yuntu quick select labels", () => {
   assert.equal(dateRangeQuickSelectLabel(15), "过去 15 天");
   assert.equal(dateRangeQuickSelectLabel(30), "过去 30 天");
   assert.equal(dateRangeQuickSelectLabel(14), null);
+  assert.deepEqual(dateRangeQuickSelectLabelCandidates(7)[0], "过去 7 天");
 });
 
 test("parses the readonly range input format", () => {

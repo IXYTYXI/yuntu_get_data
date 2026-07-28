@@ -98,7 +98,7 @@ cp config.example.json config.json
 
 配置中存在 `criteria` 时，采集器会：
 
-1. 打开 `pageUrlPrefix`，并按 `navigationQuery` 进入指定内容模块（TA 示例为 **内容 → 行业灵感激发**，`crowd_tab=industry_intention`）；
+1. 打开 `pageUrlPrefix`（应为 **行业灵感激发** 路径，不是 `ta_content` / TA内容洞察），再通过 UI 进入 **内容 → 灵感激发 → 行业灵感激发**（含侧栏与顶部菜单点击）；
 2. 在弹层中选择 **「过去 N 天」**（`dateRangeDays` 仅支持 **7 / 15 / 30**）；
 3. 在 **细分筛选 → 指定品牌** 中按 `brandSelectionMode` 选品牌（不是顶部搜索框）；
 4. 若配置了 `criteria.extractionMethodLabel`，在 **截取方式** 中选择对应项（如 `曝光量TOP30`）；
@@ -108,7 +108,8 @@ cp config.example.json config.json
 | 字段 | 含义 | 示例 |
 |------|------|------|
 | `brandSelectionMode` | `combined`：指定品牌 **一次多选** 全部 `brands`，只筛一次列表；`sequential`（默认）：每个品牌单独选、各采一批 | `"combined"` |
-| `navigationQuery` | 打开采集页时附加 query，进入 **行业灵感激发** | `{ "crowd_tab": "industry_intention" }` |
+| `pageUrlPrefix` | **行业灵感激发 / 行业内容** 页（与浏览器地址栏 path 一致） | `.../content_lab/inspiration/industryContent` |
+| `navigationQuery` | 可选 query；勿用 `ta_content` + `crowd_tab` 代替侧栏「行业灵感激发」 | 通常省略 |
 | `criteria.extractionMethodLabel` | **细分筛选** 行的 **截取方式** | `"曝光量TOP30"` |
 | `maxResultsPerBrand` | `sequential` 时每个品牌最多条数；`combined` 时为 **合并列表** 最多条数（与 `resultLimit` 取较小值） | `30` |
 | `brands` | **指定品牌** 中要选的品牌名（`combined` 时会全部选上） | `["学而思", "猿辅导"]` |
@@ -121,6 +122,14 @@ cp config.example.json config.json
 曝光列为区间文案（如 `1000-2000w`）时，按**区间下限**与 `minExposure` 比较。
 
 未配置 `criteria` 时，仅按 `resultLimit` 采集当前可见卡片，不做品牌/日期/指标过滤。
+
+### 常见报错
+
+| 报错 | 含义 | 处理 |
+|------|------|------|
+| `specified brand filter trigger did not become visible` | 页面上没有 **行业灵感激发 → 行业内容榜 → 细分筛选 → 指定品牌** | `pageUrlPrefix` 用 `.../content_lab/inspiration/industryContent`，勿用 `ta_content`；拉最新代码后再跑；在 9222 Chrome 手动进入该页，确认能看到「截取方式」 |
+| `Configured date range quick select option` | **仍是旧版程序**（未拉到最新代码） | Mac 提交并 push 后 Windows `git pull`，再 `npm start` |
+| `date range quick select option` / `Date range quick select not found` | 日期弹层里没有「过去 N 天」 | 先进入 **行业内容榜**，点日期框看是否有快捷项；`dateRangeDays` 仅支持 7 / 15 / 30 |
 
 ### 页面上的其他筛选项
 

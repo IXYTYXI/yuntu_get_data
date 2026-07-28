@@ -1,9 +1,6 @@
 {
-  "pageUrlPrefix": "https://yuntu.oceanengine.com/yuntu_brand/ecom/content_new/creative/ta_content",
+  "pageUrlPrefix": "https://yuntu.oceanengine.com/yuntu_brand/ecom/content_new/creative/content_lab/inspiration/industryContent",
   "resultLimit": 30,
-  "navigationQuery": {
-    "crowd_tab": "industry_intention"
-  },
   "output": {
     "format": "jsonl",
     "path": "output/materials.jsonl"

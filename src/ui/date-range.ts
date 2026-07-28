@@ -5,14 +5,35 @@ export function dateRangeInputSelector(): string {
 }
 
 export function dateRangeQuickSelectLabel(days: number): string | null {
+  const candidates = dateRangeQuickSelectLabelCandidates(days);
+  return candidates[0] ?? null;
+}
+
+export function dateRangeQuickSelectLabelCandidates(
+  days: number,
+): readonly string[] {
   if (days === 7) {
-    return "过去 7 天";
+    return ["过去 7 天", "过去7天", "近7天", "最近7天"];
   }
   if (days === 15) {
-    return "过去 15 天";
+    return ["过去 15 天", "过去15天", "近15天", "最近15天"];
   }
   if (days === 30) {
-    return "过去 30 天";
+    return ["过去 30 天", "过去30天", "近30天", "最近30天"];
+  }
+
+  return [];
+}
+
+export function dateRangeQuickSelectPattern(days: number): RegExp | null {
+  if (days === 7) {
+    return /(?:过去|近|最近)\s*7\s*天/;
+  }
+  if (days === 15) {
+    return /(?:过去|近|最近)\s*15\s*天/;
+  }
+  if (days === 30) {
+    return /(?:过去|近|最近)\s*30\s*天/;
   }
 
   return null;

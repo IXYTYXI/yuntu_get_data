@@ -29,6 +29,7 @@ const selectorKeys = [
   "detailPanel",
   "closeDetail",
   "industryInspirationTab",
+  "industryInspirationNav",
   "industryContentLeaderboardTab",
   "subdivisionBrandTrigger",
   "subdivisionBrandSearchInput",
@@ -293,6 +294,7 @@ function parseSelectors(value: unknown): CollectionConfig["selectors"] {
 
   for (const key of [
     "industryInspirationTab",
+    "industryInspirationNav",
     "industryContentLeaderboardTab",
     "subdivisionBrandTrigger",
     "subdivisionBrandSearchInput",

@@ -115,6 +115,7 @@ export interface CollectionConfig {
     detailPanel: string;
     closeDetail?: string;
     industryInspirationTab?: string;
+    industryInspirationNav?: string;
     industryContentLeaderboardTab?: string;
     subdivisionBrandTrigger?: string;
     subdivisionBrandSearchInput?: string;

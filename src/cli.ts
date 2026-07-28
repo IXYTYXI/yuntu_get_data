@@ -26,7 +26,7 @@ import {
   readVideoListRows,
   type ParsedVideoListRow,
 } from "./ui/video-list.js";
-import { findYuntuPage, ensureCollectionPage, YuntuPage } from "./ui/yuntu-page.js";
+import { findYuntuPage, ensureCollectionPage, YuntuPage, isTaContentInsightPageUrl } from "./ui/yuntu-page.js";
 
 const DEFAULT_CDP_URL = "http://127.0.0.1:9222";
 const TRUSTED_YUNTU_ORIGIN = "https://yuntu.oceanengine.com";
@@ -187,6 +187,14 @@ export async function main(
           config.filters,
           config.pageUrlPrefix,
         );
+
+        if (
+          config.criteria !== undefined ||
+          isTaContentInsightPageUrl(page.url()) ||
+          isTaContentInsightPageUrl(config.pageUrlPrefix)
+        ) {
+          await yuntuPage.navigateToIndustryInspirationModule();
+        }
 
         await yuntuPage.applyVisibleFilters();
         const records = config.criteria
