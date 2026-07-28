@@ -435,6 +435,18 @@ export class YuntuPage {
     }
 
     await this.ensureSubdivisionFiltersReady();
+    await this.dismissBlockingOverlays();
+
+    const existingRange = await this.tryReadVisibleDateRangeValue();
+    if (existingRange !== null) {
+      const parsed = parseDateRangeValue(existingRange);
+      if (
+        parsed !== null &&
+        inclusiveDayCount(parsed.start, parsed.end) === days
+      ) {
+        return;
+      }
+    }
 
     const { picker, dateInput } = await this.resolveDateRangeControls();
     await this.guardedDomOperation(() => dateInput.scrollIntoViewIfNeeded()).catch(
@@ -474,21 +486,83 @@ export class YuntuPage {
     }
   }
 
+  private async tryReadVisibleDateRangeValue(): Promise<string | null> {
+    try {
+      const { dateInput } = await this.resolveDateRangeControls();
+      const value = await this.guardedDomOperation(() => dateInput.inputValue());
+      if (parseDateRangeValue(value) !== null) {
+        return value;
+      }
+    } catch {
+      // fall back to visible text near 基础筛选
+    }
+
+    const basicFilter = this.page
+      .locator("div, section, form")
+      .filter({ hasText: /基础\s*筛选/ })
+      .first();
+    if (!(await basicFilter.isVisible().catch(() => false))) {
+      return null;
+    }
+
+    const text = await this.guardedDomOperation(() => basicFilter.innerText());
+    const match = text.match(/\d{4}-\d{2}-\d{2}\s*~\s*\d{4}-\d{2}-\d{2}/);
+    return match?.[0] ?? null;
+  }
+
   private async resolveDateRangeControls(): Promise<{
     picker: Locator;
     dateInput: Locator;
   }> {
     const placeholder = "开始时间 ~ 结束时间";
-    const inputSelectors = [
-      `input[placeholder="${placeholder}"]`,
-      'input[placeholder*="开始时间"]',
-      `${dateRangeInputSelector()}`,
-    ];
-
     const searchRoots: Array<Page | Frame> = [
       this.contentRoot(),
       this.page,
       ...this.page.frames(),
+    ];
+
+    for (const root of searchRoots) {
+      const basicFilter = root
+        .locator("div, section, form")
+        .filter({ hasText: /基础\s*筛选/ })
+        .first();
+      if (await basicFilter.isVisible().catch(() => false)) {
+        const picker = basicFilter
+          .locator(
+            ".content-ecom-yuntu-yuntu-date-picker, .content-ecom-date-picker, [class*='date-picker']",
+          )
+          .first();
+        if (await picker.isVisible().catch(() => false)) {
+          const dateInput = picker.locator("input").first();
+          if (await dateInput.isVisible().catch(() => false)) {
+            return { picker, dateInput };
+          }
+        }
+
+        const inputs = basicFilter.locator("input");
+        const count = await this.guardedDomOperation(() => inputs.count());
+        for (let index = 0; index < count; index += 1) {
+          const candidate = inputs.nth(index);
+          if (!(await candidate.isVisible().catch(() => false))) {
+            continue;
+          }
+          const value = await this.guardedDomOperation(() => candidate.inputValue());
+          if (parseDateRangeValue(value) !== null) {
+            const pickerFromInput = candidate
+              .locator("xpath=ancestor::*[contains(@class,'date-picker')][1]")
+              .first()
+              .or(basicFilter.locator("[class*='date-picker']").first())
+              .or(picker);
+            return { picker: pickerFromInput, dateInput: candidate };
+          }
+        }
+      }
+    }
+
+    const inputSelectors = [
+      `input[placeholder="${placeholder}"]`,
+      'input[placeholder*="开始时间"]',
+      `${dateRangeInputSelector()}`,
     ];
 
     for (const root of searchRoots) {
@@ -505,25 +579,6 @@ export class YuntuPage {
           .or(root.locator(".content-ecom-date-picker").first());
 
         return { picker, dateInput };
-      }
-
-      const basicFilter = root
-        .locator("div, section, form")
-        .filter({ hasText: /基础\s*筛选/ })
-        .first();
-      if (await basicFilter.isVisible().catch(() => false)) {
-        const nestedInput = basicFilter
-          .locator(`input[placeholder="${placeholder}"]`)
-          .first()
-          .or(basicFilter.locator('input[placeholder*="开始时间"]').first())
-          .or(basicFilter.locator("input").first());
-        if (await nestedInput.isVisible().catch(() => false)) {
-          const picker = basicFilter
-            .locator(".content-ecom-yuntu-yuntu-date-picker, .content-ecom-date-picker")
-            .first()
-            .or(root.locator(".content-ecom-yuntu-yuntu-date-picker").first());
-          return { picker, dateInput: nestedInput };
-        }
       }
     }
 
@@ -576,6 +631,7 @@ export class YuntuPage {
   async searchCompetitorBrands(brandNames: readonly string[]): Promise<void> {
     this.assertCurrentPageTrusted();
     await this.ensureSubdivisionFiltersReady();
+    await this.dismissBlockingOverlays();
     await this.ensureSpecifiedBrandMode();
     await this.clearSpecifiedBrandTags();
     for (const brandName of brandNames) {
