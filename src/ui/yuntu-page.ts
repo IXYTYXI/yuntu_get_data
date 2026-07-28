@@ -11,6 +11,7 @@ import {
   dateRangeQuickSelectLabelCandidates,
   dateRangeQuickSelectPattern,
   inclusiveDayCount,
+  normalizeDateRangeDisplay,
   parseDateRangeValue,
 } from "./date-range.js";
 import {
@@ -28,6 +29,8 @@ export const TRUSTED_PAGE_FAILURE_MESSAGE =
 const TARGET_PAGE_SELECTION_FAILURE_MESSAGE =
   "Sign in to Yuntu in the debugging Chrome window and select a Yuntu tab";
 const TRUSTED_YUNTU_ORIGIN = "https://yuntu.oceanengine.com";
+const VISIBLE_DATE_RANGE_TEXT_PATTERN =
+  /\d{4}-\d{2}-\d{2}\s*[~～]\s*\d{4}-\d{2}-\d{2}/;
 
 export function isTrustedYuntuOrigin(location: string): boolean {
   try {
@@ -437,15 +440,8 @@ export class YuntuPage {
     await this.ensureSubdivisionFiltersReady();
     await this.dismissBlockingOverlays();
 
-    const existingRange = await this.tryReadVisibleDateRangeValue();
-    if (existingRange !== null) {
-      const parsed = parseDateRangeValue(existingRange);
-      if (
-        parsed !== null &&
-        inclusiveDayCount(parsed.start, parsed.end) === days
-      ) {
-        return;
-      }
+    if (await this.configuredDateRangeMatchesDays(days)) {
+      return;
     }
 
     const { picker, dateInput } = await this.resolveDateRangeControls();
@@ -466,16 +462,16 @@ export class YuntuPage {
       return;
     }
 
+    if (await this.configuredDateRangeMatchesDays(days)) {
+      return;
+    }
+
     await this.selectDateRangeQuickOption(picker, quickSelectLabels, days);
     await this.page.waitForTimeout(2000);
 
     const retriedValue = await this.guardedDomOperation(() => dateInput.inputValue());
     if (retriedValue === beforeValue) {
-      const parsed = parseDateRangeValue(retriedValue);
-      if (
-        parsed !== null &&
-        inclusiveDayCount(parsed.start, parsed.end) === days
-      ) {
+      if (await this.configuredDateRangeMatchesDays(days)) {
         return;
       }
 
@@ -486,28 +482,72 @@ export class YuntuPage {
     }
   }
 
+  private async configuredDateRangeMatchesDays(days: number): Promise<boolean> {
+    const existingRange = await this.tryReadVisibleDateRangeValue();
+    if (existingRange === null) {
+      return false;
+    }
+
+    const parsed = parseDateRangeValue(existingRange);
+    return (
+      parsed !== null && inclusiveDayCount(parsed.start, parsed.end) === days
+    );
+  }
+
   private async tryReadVisibleDateRangeValue(): Promise<string | null> {
+    const searchRoots: Array<Page | Frame> = [
+      this.contentRoot(),
+      this.page,
+      ...this.page.frames(),
+    ];
+
+    for (const root of searchRoots) {
+      const sections = root
+        .locator("div, section, form")
+        .filter({ hasText: /基础\s*筛选/ });
+      const sectionCount = await this.guardedDomOperation(() =>
+        sections.count(),
+      ).catch(() => 0);
+      for (let index = 0; index < sectionCount; index += 1) {
+        const text = await this.guardedDomOperation(() =>
+          sections.nth(index).innerText(),
+        ).catch(() => "");
+        const fromText = this.extractDateRangeFromVisibleText(text);
+        if (fromText !== null) {
+          return fromText;
+        }
+      }
+    }
+
+    for (const root of searchRoots) {
+      const bodyText = await this.guardedDomOperation(() =>
+        root.locator("body").innerText(),
+      ).catch(() => "");
+      if (!/基础\s*筛选/.test(bodyText)) {
+        continue;
+      }
+      const fromBody = this.extractDateRangeFromVisibleText(bodyText);
+      if (fromBody !== null) {
+        return fromBody;
+      }
+    }
+
     try {
       const { dateInput } = await this.resolveDateRangeControls();
       const value = await this.guardedDomOperation(() => dateInput.inputValue());
-      if (parseDateRangeValue(value) !== null) {
-        return value;
-      }
+      return normalizeDateRangeDisplay(value);
     } catch {
-      // fall back to visible text near 基础筛选
+      return null;
     }
+  }
 
-    const basicFilter = this.page
-      .locator("div, section, form")
-      .filter({ hasText: /基础\s*筛选/ })
-      .first();
-    if (!(await basicFilter.isVisible().catch(() => false))) {
+  private extractDateRangeFromVisibleText(text: string): string | null {
+    const match = text.match(VISIBLE_DATE_RANGE_TEXT_PATTERN);
+    if (match === null) {
       return null;
     }
 
-    const text = await this.guardedDomOperation(() => basicFilter.innerText());
-    const match = text.match(/\d{4}-\d{2}-\d{2}\s*~\s*\d{4}-\d{2}-\d{2}/);
-    return match?.[0] ?? null;
+    return normalizeDateRangeDisplay(match[0]);
   }
 
   private async resolveDateRangeControls(): Promise<{

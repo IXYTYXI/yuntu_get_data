@@ -20,6 +20,7 @@ test("parses the readonly range input format", () => {
   const parsed = parseDateRangeValue("2026-07-11 ~ 2026-07-17");
   assert.notEqual(parsed, null);
   assert.equal(inclusiveDayCount(parsed!.start, parsed!.end), 7);
+  assert.notEqual(parseDateRangeValue("2026-07-16～2026-07-22"), null);
 });
 
 test("rejects malformed date range values", () => {
