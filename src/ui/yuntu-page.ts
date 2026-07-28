@@ -473,7 +473,14 @@ export class YuntuPage {
       .filter({ hasText: "细分筛选" })
       .filter({ hasText: "指定品牌" })
       .filter({ hasText: "截取方式" })
-      .first();
+      .first()
+      .or(
+        this.page
+          .locator("div, section, form, [class*='filter']")
+          .filter({ hasText: "细分筛选" })
+          .filter({ hasText: "指定品牌" })
+          .first(),
+      );
   }
 
   private subdivisionSelectTrigger(row: Locator, label: string): Locator {
@@ -580,6 +587,17 @@ export class YuntuPage {
   }
 
   private async ensureIndustryContentLeaderboardTab(): Promise<void> {
+    if (await this.subdivisionFilterRow().isVisible().catch(() => false)) {
+      return;
+    }
+
+    if (isIndustryInspirationPageUrl(this.page.url())) {
+      await this.page.waitForTimeout(1500);
+      if (await this.subdivisionFilterRow().isVisible().catch(() => false)) {
+        return;
+      }
+    }
+
     if (this.selectors.industryContentLeaderboardTab !== undefined) {
       await this.clickVisible(
         this.page.locator(this.selectors.industryContentLeaderboardTab).first(),
@@ -590,10 +608,15 @@ export class YuntuPage {
     }
 
     const tabCandidates = this.page
-      .locator(".content-ecom-tabs-tab, [role='tab']")
+      .locator(
+        ".content-ecom-tabs-tab, [role='tab'], .content-ecom-radio-button, [class*='tabs-tab']",
+      )
       .filter({ hasText: "行业内容榜" });
     const count = await this.guardedDomOperation(() => tabCandidates.count());
     if (count === 0) {
+      if (isIndustryInspirationPageUrl(this.page.url())) {
+        return;
+      }
       throw new CollectorFailure(
         "SELECTOR_NOT_FOUND",
         "行业内容榜 tab not found; open 内容 → 行业灵感激发 first",
@@ -612,6 +635,10 @@ export class YuntuPage {
       }
       await this.clickVisible(tab, "industry content leaderboard tab");
       await this.page.waitForTimeout(1500);
+      return;
+    }
+
+    if (isIndustryInspirationPageUrl(this.page.url())) {
       return;
     }
 
