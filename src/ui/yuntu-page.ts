@@ -359,31 +359,35 @@ export class YuntuPage {
     return formatPageInspectionSummary(await inspectYuntuPage(this.page));
   }
 
+  private async markSubdivisionFiltersReadyFromInspection(): Promise<boolean> {
+    const inspection = await inspectYuntuPage(this.page);
+    if (inspection.requiresSignIn) {
+      throw new CollectorFailure(
+        "AUTH_REQUIRED",
+        "Sign in to Yuntu in the debugging Chrome window and select a Yuntu tab",
+      );
+    }
+
+    if (!hasSubdivisionFilters(inspection) && !(await this.anyFilterLabelVisible())) {
+      return false;
+    }
+
+    await this.resolveFilterScope();
+    await this.page.waitForTimeout(300);
+    return true;
+  }
+
   private async prepareIndustryContentView(): Promise<void> {
     await this.dismissBlockingOverlays();
     await this.page.waitForLoadState("load", { timeout: 30_000 }).catch(() => undefined);
 
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      const inspection = await inspectYuntuPage(this.page);
-      if (inspection.requiresSignIn) {
-        throw new CollectorFailure(
-          "AUTH_REQUIRED",
-          "Sign in to Yuntu in the debugging Chrome window and select a Yuntu tab",
-        );
-      }
+    if (await this.markSubdivisionFiltersReadyFromInspection()) {
+      return;
+    }
 
-      if (
-        hasSubdivisionFilters(inspection) ||
-        (await this.anyFilterLabelVisible())
-      ) {
-        try {
-          const row = await this.waitForSubdivisionFilterRow();
-          await this.guardedDomOperation(() => row.scrollIntoViewIfNeeded());
-          await this.page.waitForTimeout(500);
-          return;
-        } catch {
-          // fall through to navigation / scroll retries
-        }
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      if (await this.markSubdivisionFiltersReadyFromInspection()) {
+        return;
       }
 
       if (isIndustryInspirationPageUrl(this.page.url())) {
@@ -767,19 +771,8 @@ export class YuntuPage {
   }
 
   private async ensureSubdivisionFiltersReady(): Promise<void> {
-    const inspection = await inspectYuntuPage(this.page);
-    if (
-      hasSubdivisionFilters(inspection) ||
-      (await this.anyFilterLabelVisible())
-    ) {
-      try {
-        const row = await this.waitForSubdivisionFilterRow();
-        await this.guardedDomOperation(() => row.scrollIntoViewIfNeeded());
-        await this.page.waitForTimeout(500);
-        return;
-      } catch {
-        // continue with full page preparation
-      }
+    if (await this.markSubdivisionFiltersReadyFromInspection()) {
+      return;
     }
 
     await this.prepareIndustryContentView();
