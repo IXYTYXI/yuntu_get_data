@@ -230,16 +230,31 @@ npm start -- --config config.json --cdp-url http://127.0.0.1:9222
 
 ## 五·五、上传到飞书多维表格（可选）
 
-加上 `--upload-to-bitable` 参数即可在采集完成后自动创建飞书多维表格，上传全部数据和视频：
+加上 `--upload-to-bitable` 参数即可在采集完成后自动创建飞书多维表格，上传全部数据和视频。
+
+### 方式 A：`.env` 文件（推荐）
+
+在项目根目录创建 `.env` 文件（已在 `.gitignore` 中，不会被提交）：
 
 ```sh
-npm start -- --config config.json \
-  --upload-to-bitable \
-  --feishu-app-id cli_aa9eb58423fe9bdf \
-  --feishu-app-secret YOUR_APP_SECRET
+cp .env.example .env
+# 编辑 .env，填入实际的 App ID 和 App Secret
 ```
 
-也可以通过环境变量传入凭证（推荐，避免命令行泄露 secret）：
+`.env` 文件内容：
+
+```
+FEISHU_APP_ID=cli_aa9eb58423fe9bdf
+FEISHU_APP_SECRET=YOUR_APP_SECRET
+```
+
+然后只需：
+
+```sh
+npm start -- --config config.json --upload-to-bitable
+```
+
+### 方式 B：环境变量
 
 ```sh
 export FEISHU_APP_ID=cli_aa9eb58423fe9bdf
@@ -254,6 +269,17 @@ $env:FEISHU_APP_ID = "cli_aa9eb58423fe9bdf"
 $env:FEISHU_APP_SECRET = "YOUR_APP_SECRET"
 npm start -- --config config.json --upload-to-bitable
 ```
+
+### 方式 C：命令行参数
+
+```sh
+npm start -- --config config.json \
+  --upload-to-bitable \
+  --feishu-app-id cli_aa9eb58423fe9bdf \
+  --feishu-app-secret YOUR_APP_SECRET
+```
+
+优先级：命令行参数 > 环境变量 > `.env` 文件。
 
 ### 前置条件
 

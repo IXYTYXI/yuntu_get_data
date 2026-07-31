@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url";
 import { chromium, type Browser, type Page } from "playwright";
 
 import { loadCollectionConfig } from "./config.js";
+import { loadDotenv } from "./dotenv.js";
 import {
   CollectorFailure,
   type CollectionConfig,
@@ -52,8 +53,8 @@ export const CLI_HELP_TEXT = [
   "  --dry-run                    Collect visible metadata without downloading videos.",
   "  --debug-page                 Log visible page markers before collection actions.",
   "  --upload-to-bitable          Upload results to a Feishu Bitable (requires app credentials).",
-  "  --feishu-app-id <id>         Feishu app ID (or set FEISHU_APP_ID env var).",
-  "  --feishu-app-secret <secret> Feishu app secret (or set FEISHU_APP_SECRET env var).",
+  "  --feishu-app-id <id>         Feishu app ID (or .env / FEISHU_APP_ID env var).",
+  "  --feishu-app-secret <secret> Feishu app secret (or .env / FEISHU_APP_SECRET env var).",
   "  --help                       Show this help text.",
   "",
   "Downloads verified player media into the configured download.directory.",
@@ -137,15 +138,9 @@ export function parseCliArgs(argv: readonly string[]): ParsedCliArgs {
     throw new Error("--config is required");
   }
 
-  if (uploadToBitable) {
+  if (uploadToBitable && (!feishuAppId || !feishuAppSecret)) {
     feishuAppId ??= process.env.FEISHU_APP_ID;
     feishuAppSecret ??= process.env.FEISHU_APP_SECRET;
-    if (!feishuAppId || !feishuAppSecret) {
-      throw new Error(
-        "--upload-to-bitable requires --feishu-app-id and --feishu-app-secret " +
-          "(or FEISHU_APP_ID / FEISHU_APP_SECRET env vars)",
-      );
-    }
   }
 
   return {
@@ -212,6 +207,21 @@ export async function main(
   if (options.help) {
     logger.log(CLI_HELP_TEXT);
     return 0;
+  }
+
+  if (options.uploadToBitable && (!options.feishuAppId || !options.feishuAppSecret)) {
+    const dotenvVars = await loadDotenv();
+    options.feishuAppId ??= dotenvVars.FEISHU_APP_ID;
+    options.feishuAppSecret ??= dotenvVars.FEISHU_APP_SECRET;
+    if (!options.feishuAppId || !options.feishuAppSecret) {
+      logger.error(
+        "--upload-to-bitable requires Feishu credentials. Provide via:\n" +
+          "  1. .env file (FEISHU_APP_ID / FEISHU_APP_SECRET)\n" +
+          "  2. Environment variables (FEISHU_APP_ID / FEISHU_APP_SECRET)\n" +
+          "  3. CLI flags (--feishu-app-id / --feishu-app-secret)",
+      );
+      return 1;
+    }
   }
 
   try {
