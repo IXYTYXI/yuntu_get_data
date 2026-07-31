@@ -70,6 +70,9 @@ test("parses a configuration path with the default CDP URL", () => {
     dryRun: false,
     debugPage: false,
     help: false,
+    uploadToBitable: false,
+    feishuAppId: undefined,
+    feishuAppSecret: undefined,
   });
 });
 
@@ -91,6 +94,9 @@ test("parses an explicit CDP URL with dry-run enabled", () => {
       dryRun: true,
       debugPage: false,
       help: false,
+      uploadToBitable: false,
+      feishuAppId: undefined,
+      feishuAppSecret: undefined,
     },
   );
 });
@@ -244,8 +250,7 @@ test("documents download behavior in the help text", () => {
   assert.match(CLI_HELP_TEXT, /--page-index/);
   assert.match(CLI_HELP_TEXT, /--dry-run/);
   assert.match(CLI_HELP_TEXT, /download\.directory/i);
-  assert.match(CLI_HELP_TEXT, /Does not persist media URLs/i);
-  assert.match(CLI_HELP_TEXT, /write Feishu Base/i);
+  assert.match(CLI_HELP_TEXT, /upload-to-bitable/i);
 });
 
 test("allows help without a configuration path", () => {
@@ -256,5 +261,8 @@ test("allows help without a configuration path", () => {
     dryRun: false,
     debugPage: false,
     help: true,
+    uploadToBitable: false,
+    feishuAppId: undefined,
+    feishuAppSecret: undefined,
   });
 });

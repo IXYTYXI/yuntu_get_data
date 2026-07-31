@@ -18,6 +18,7 @@ import {
   skippedDownloadStatus,
 } from "./download/authorized-downloader.js";
 import { BrowserVideoDownloader } from "./download/browser-video-downloader.js";
+import { uploadToBitable, type FeishuUploadConfig } from "./feishu-upload.js";
 import { writeOutput } from "./output.js";
 import { MaterialDetail } from "./ui/material-detail.js";
 import {
@@ -42,17 +43,21 @@ const SAFE_ERROR_MESSAGES: Record<CollectorErrorCode, string> = {
 
 export const CLI_HELP_TEXT = [
   "Usage: npm start -- --config <path> [--cdp-url <url>] [--page-index <n>] [--dry-run]",
+  "                     [--upload-to-bitable --feishu-app-id <id> --feishu-app-secret <secret>]",
   "",
   "Options:",
-  "  --config <path>    Required local JSON collection configuration.",
-  `  --cdp-url <url>   Chrome DevTools endpoint (default: ${DEFAULT_CDP_URL}).`,
-  "  --page-index <n>  Required when the debugging browser has multiple tabs.",
-  "  --dry-run          Collect visible metadata without downloading videos.",
-  "  --debug-page       Log visible page markers before collection actions.",
-  "  --help             Show this help text.",
+  "  --config <path>              Required local JSON collection configuration.",
+  `  --cdp-url <url>             Chrome DevTools endpoint (default: ${DEFAULT_CDP_URL}).`,
+  "  --page-index <n>            Required when the debugging browser has multiple tabs.",
+  "  --dry-run                    Collect visible metadata without downloading videos.",
+  "  --debug-page                 Log visible page markers before collection actions.",
+  "  --upload-to-bitable          Upload results to a Feishu Bitable (requires app credentials).",
+  "  --feishu-app-id <id>         Feishu app ID (or set FEISHU_APP_ID env var).",
+  "  --feishu-app-secret <secret> Feishu app secret (or set FEISHU_APP_SECRET env var).",
+  "  --help                       Show this help text.",
   "",
   "Downloads verified player media into the configured download.directory.",
-  "Does not persist media URLs, access cookies/storage directly, or write Feishu Base.",
+  "With --upload-to-bitable, also creates a Feishu Bitable and uploads data + videos.",
 ].join("\n");
 
 export interface ParsedCliArgs {
@@ -62,6 +67,9 @@ export interface ParsedCliArgs {
   dryRun: boolean;
   debugPage: boolean;
   help: boolean;
+  uploadToBitable: boolean;
+  feishuAppId?: string;
+  feishuAppSecret?: string;
 }
 
 export interface CliLogger {
@@ -76,6 +84,9 @@ export function parseCliArgs(argv: readonly string[]): ParsedCliArgs {
   let dryRun = false;
   let debugPage = false;
   let help = false;
+  let uploadToBitable = false;
+  let feishuAppId: string | undefined;
+  let feishuAppSecret: string | undefined;
 
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
@@ -103,6 +114,17 @@ export function parseCliArgs(argv: readonly string[]): ParsedCliArgs {
       case "--debug-page":
         debugPage = true;
         break;
+      case "--upload-to-bitable":
+        uploadToBitable = true;
+        break;
+      case "--feishu-app-id":
+        feishuAppId = readOptionValue(argv, index, "--feishu-app-id");
+        index += 1;
+        break;
+      case "--feishu-app-secret":
+        feishuAppSecret = readOptionValue(argv, index, "--feishu-app-secret");
+        index += 1;
+        break;
       case "--help":
         help = true;
         break;
@@ -115,7 +137,28 @@ export function parseCliArgs(argv: readonly string[]): ParsedCliArgs {
     throw new Error("--config is required");
   }
 
-  return { configPath, cdpUrl, pageIndex, dryRun, debugPage, help };
+  if (uploadToBitable) {
+    feishuAppId ??= process.env.FEISHU_APP_ID;
+    feishuAppSecret ??= process.env.FEISHU_APP_SECRET;
+    if (!feishuAppId || !feishuAppSecret) {
+      throw new Error(
+        "--upload-to-bitable requires --feishu-app-id and --feishu-app-secret " +
+          "(or FEISHU_APP_ID / FEISHU_APP_SECRET env vars)",
+      );
+    }
+  }
+
+  return {
+    configPath,
+    cdpUrl,
+    pageIndex,
+    dryRun,
+    debugPage,
+    help,
+    uploadToBitable,
+    feishuAppId,
+    feishuAppSecret,
+  };
 }
 
 export function sanitizeBrowserLocation(location: string): string {
@@ -238,6 +281,27 @@ export async function main(
         logger.log(
           `[yuntu] Done. ${records.length} record(s) -> ${config.output.path}`,
         );
+
+        if (
+          options.uploadToBitable &&
+          options.feishuAppId &&
+          options.feishuAppSecret
+        ) {
+          const uploadResult = await uploadToBitable(
+            records,
+            {
+              appId: options.feishuAppId,
+              appSecret: options.feishuAppSecret,
+            },
+            config.download.directory,
+            logger,
+          );
+          logger.log(
+            `[feishu] Bitable: ${uploadResult.baseUrl} ` +
+              `(${uploadResult.recordCount} records, ${uploadResult.attachmentCount} videos)`,
+          );
+        }
+
         return 0;
       },
     );
@@ -501,7 +565,7 @@ function requireConfigPath(options: ParsedCliArgs): string {
 function readOptionValue(
   argv: readonly string[],
   index: number,
-  option: "--config" | "--cdp-url" | "--page-index",
+  option: "--config" | "--cdp-url" | "--page-index" | "--feishu-app-id" | "--feishu-app-secret",
 ): string {
   const value = argv[index + 1];
   if (value === undefined || value.length === 0 || value.startsWith("--")) {

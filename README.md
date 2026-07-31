@@ -211,6 +211,9 @@ npm start -- --config config.json --cdp-url http://127.0.0.1:9222
 | `--cdp-url <url>` | 否 | 默认 `http://127.0.0.1:9222`，仅允许本机 loopback |
 | `--page-index <n>` | 多标签时建议 | 从 0 开始的标签页序号 |
 | `--dry-run` | 否 | 只采元数据并校验播放，不写入视频文件 |
+| `--upload-to-bitable` | 否 | 采集后自动上传到飞书多维表格（需配合飞书应用凭证） |
+| `--feishu-app-id <id>` | 与 `--upload-to-bitable` 搭配 | 飞书自建应用 App ID（也可用环境变量 `FEISHU_APP_ID`） |
+| `--feishu-app-secret <secret>` | 与 `--upload-to-bitable` 搭配 | 飞书自建应用 App Secret（也可用环境变量 `FEISHU_APP_SECRET`） |
 
 ---
 
@@ -222,6 +225,54 @@ npm start -- --config config.json --cdp-url http://127.0.0.1:9222
 | 视频 | `download.directory` | 播放校验通过后下载；文件名为 `品牌名-排名.mp4`（criteria 模式）等 |
 
 单条记录包含：品牌、标题、脚本/逐字稿相关字段、列表侧的曝光/3S/CTR、播放状态、下载状态与相对路径。**不会在元数据里保存原始视频 URL。**
+
+---
+
+## 五·五、上传到飞书多维表格（可选）
+
+加上 `--upload-to-bitable` 参数即可在采集完成后自动创建飞书多维表格，上传全部数据和视频：
+
+```sh
+npm start -- --config config.json \
+  --upload-to-bitable \
+  --feishu-app-id cli_aa9eb58423fe9bdf \
+  --feishu-app-secret YOUR_APP_SECRET
+```
+
+也可以通过环境变量传入凭证（推荐，避免命令行泄露 secret）：
+
+```sh
+export FEISHU_APP_ID=cli_aa9eb58423fe9bdf
+export FEISHU_APP_SECRET=YOUR_APP_SECRET
+npm start -- --config config.json --upload-to-bitable
+```
+
+**Windows PowerShell：**
+
+```powershell
+$env:FEISHU_APP_ID = "cli_aa9eb58423fe9bdf"
+$env:FEISHU_APP_SECRET = "YOUR_APP_SECRET"
+npm start -- --config config.json --upload-to-bitable
+```
+
+### 前置条件
+
+- 飞书自建应用需开通 **多维表格** 和 **云文档上传** 相关权限（`bitable:app`, `drive:drive`）
+- 应用使用 **机器人身份（bot）** 鉴权，无需人工授权登录
+- 大于 20MB 的视频自动走分片上传
+
+### 上传内容
+
+自动创建的多维表格包含 13 个字段：
+
+| 字段 | 类型 | 来源 |
+|------|------|------|
+| 视频标题 | 文本 | `title` |
+| 首投日期 | 日期 | `launchDate` |
+| 视频文件 | 附件 | 下载的 `.mp4` 视频 |
+| 视频ID / 行业 / 触点 | 文本 | `metrics.visibleText` 解析 |
+| 曝光量 / 完播率 / 5S完播率 / CTR / CVR / PVR | 文本 | `metrics.visibleText` 解析 |
+| 视频脚本 | 文本 | `script` 或 `transcript` |
 
 ---
 
@@ -268,7 +319,6 @@ npm start -- --config config.json --cdp-url http://127.0.0.1:9222
 
 - 在元数据中持久化媒体 URL；
 - 直接读取 Cookie / localStorage；
-- 写入飞书多维表格；
 - 下载 HLS（`.m3u8`）流。
 
 任何绕过平台可见 UI 的流程需单独合规审批。
