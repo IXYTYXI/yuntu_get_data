@@ -19,6 +19,7 @@ import {
   skippedDownloadStatus,
 } from "./download/authorized-downloader.js";
 import { BrowserVideoDownloader } from "./download/browser-video-downloader.js";
+import { tryAutoLogin, type YuntuCredentials } from "./auto-login.js";
 import { uploadToBitable, type FeishuUploadConfig } from "./feishu-upload.js";
 import { writeOutput } from "./output.js";
 import { MaterialDetail } from "./ui/material-detail.js";
@@ -55,10 +56,14 @@ export const CLI_HELP_TEXT = [
   "  --upload-to-bitable          Upload results to a Feishu Bitable (requires lark-cli configured).",
   "  --feishu-app-id <id>         Feishu app ID (or .env / FEISHU_APP_ID env var).",
   "  --feishu-app-secret <secret> Feishu app secret (optional if lark-cli is configured).",
+  "  --yuntu-url <url>            Yuntu login URL (or .env / YUNTU_URL env var).",
+  "  --yuntu-username <user>      Yuntu username (or .env / YUNTU_USERNAME env var).",
+  "  --yuntu-password <pass>      Yuntu password (or .env / YUNTU_PASSWORD env var).",
   "  --help                       Show this help text.",
   "",
   "Downloads verified player media into the configured download.directory.",
   "With --upload-to-bitable, also creates a Feishu Bitable and uploads data + videos.",
+  "When YUNTU_USERNAME and YUNTU_PASSWORD are set, auto-login is attempted if not already signed in.",
 ].join("\n");
 
 export interface ParsedCliArgs {
@@ -71,6 +76,9 @@ export interface ParsedCliArgs {
   uploadToBitable: boolean;
   feishuAppId?: string;
   feishuAppSecret?: string;
+  yuntuUrl?: string;
+  yuntuUsername?: string;
+  yuntuPassword?: string;
 }
 
 export interface CliLogger {
@@ -88,6 +96,9 @@ export function parseCliArgs(argv: readonly string[]): ParsedCliArgs {
   let uploadToBitable = false;
   let feishuAppId: string | undefined;
   let feishuAppSecret: string | undefined;
+  let yuntuUrl: string | undefined;
+  let yuntuUsername: string | undefined;
+  let yuntuPassword: string | undefined;
 
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
@@ -126,6 +137,18 @@ export function parseCliArgs(argv: readonly string[]): ParsedCliArgs {
         feishuAppSecret = readOptionValue(argv, index, "--feishu-app-secret");
         index += 1;
         break;
+      case "--yuntu-url":
+        yuntuUrl = readOptionValue(argv, index, "--yuntu-url");
+        index += 1;
+        break;
+      case "--yuntu-username":
+        yuntuUsername = readOptionValue(argv, index, "--yuntu-username");
+        index += 1;
+        break;
+      case "--yuntu-password":
+        yuntuPassword = readOptionValue(argv, index, "--yuntu-password");
+        index += 1;
+        break;
       case "--help":
         help = true;
         break;
@@ -143,6 +166,10 @@ export function parseCliArgs(argv: readonly string[]): ParsedCliArgs {
     feishuAppSecret ??= process.env.FEISHU_APP_SECRET;
   }
 
+  yuntuUrl ??= process.env.YUNTU_URL;
+  yuntuUsername ??= process.env.YUNTU_USERNAME;
+  yuntuPassword ??= process.env.YUNTU_PASSWORD;
+
   return {
     configPath,
     cdpUrl,
@@ -153,6 +180,9 @@ export function parseCliArgs(argv: readonly string[]): ParsedCliArgs {
     uploadToBitable,
     feishuAppId,
     feishuAppSecret,
+    yuntuUrl,
+    yuntuUsername,
+    yuntuPassword,
   };
 }
 
@@ -209,8 +239,9 @@ export async function main(
     return 0;
   }
 
+  const dotenvVars = await loadDotenv();
+
   if (options.uploadToBitable && !options.feishuAppId) {
-    const dotenvVars = await loadDotenv();
     options.feishuAppId ??= dotenvVars.FEISHU_APP_ID;
     options.feishuAppSecret ??= dotenvVars.FEISHU_APP_SECRET;
     if (!options.feishuAppId) {
@@ -225,6 +256,10 @@ export async function main(
     }
   }
 
+  options.yuntuUrl ??= dotenvVars.YUNTU_URL;
+  options.yuntuUsername ??= dotenvVars.YUNTU_USERNAME;
+  options.yuntuPassword ??= dotenvVars.YUNTU_PASSWORD;
+
   try {
     const config = await loadCollectionConfig(requireConfigPath(options));
     logger.log("[yuntu] Connecting to Chrome DevTools...");
@@ -236,11 +271,36 @@ export async function main(
       options.cdpUrl,
       async (browser) => {
         logger.log("[yuntu] Connected. Selecting Yuntu tab...");
-        const page = findYuntuPage(
-          browser,
-          config.pageUrlPrefix,
-          options.pageIndex,
-        );
+        let page: Page;
+        try {
+          page = findYuntuPage(
+            browser,
+            config.pageUrlPrefix,
+            options.pageIndex,
+          );
+        } catch (error) {
+          if (
+            error instanceof CollectorFailure &&
+            error.code === "AUTH_REQUIRED" &&
+            options.yuntuUsername &&
+            options.yuntuPassword
+          ) {
+            logger.log("[yuntu] 未检测到已登录的云图页面，尝试自动登录...");
+            const loginUrl =
+              options.yuntuUrl ?? "https://yuntu.oceanengine.com";
+            page = await tryAutoLogin(
+              browser,
+              {
+                url: loginUrl,
+                username: options.yuntuUsername,
+                password: options.yuntuPassword,
+              },
+              logger,
+            );
+          } else {
+            throw error;
+          }
+        }
         logger.log("[yuntu] Navigating to collection page...");
         await ensureCollectionPage(
           page,
@@ -575,7 +635,7 @@ function requireConfigPath(options: ParsedCliArgs): string {
 function readOptionValue(
   argv: readonly string[],
   index: number,
-  option: "--config" | "--cdp-url" | "--page-index" | "--feishu-app-id" | "--feishu-app-secret",
+  option: "--config" | "--cdp-url" | "--page-index" | "--feishu-app-id" | "--feishu-app-secret" | "--yuntu-url" | "--yuntu-username" | "--yuntu-password",
 ): string {
   const value = argv[index + 1];
   if (value === undefined || value.length === 0 || value.startsWith("--")) {
