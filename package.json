@@ -9,7 +9,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "npm run build && node --test dist/tests/*.test.js",
-    "start": "npm run build && node dist/src/cli.js"
+    "start": "npm run build && node dist/src/cli.js --config config.json --upload-to-bitable"
   },
   "dependencies": {
     "playwright": "^1.55.0"

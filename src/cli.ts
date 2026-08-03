@@ -52,9 +52,9 @@ export const CLI_HELP_TEXT = [
   "  --page-index <n>            Required when the debugging browser has multiple tabs.",
   "  --dry-run                    Collect visible metadata without downloading videos.",
   "  --debug-page                 Log visible page markers before collection actions.",
-  "  --upload-to-bitable          Upload results to a Feishu Bitable (requires app credentials).",
+  "  --upload-to-bitable          Upload results to a Feishu Bitable (requires lark-cli configured).",
   "  --feishu-app-id <id>         Feishu app ID (or .env / FEISHU_APP_ID env var).",
-  "  --feishu-app-secret <secret> Feishu app secret (or .env / FEISHU_APP_SECRET env var).",
+  "  --feishu-app-secret <secret> Feishu app secret (optional if lark-cli is configured).",
   "  --help                       Show this help text.",
   "",
   "Downloads verified player media into the configured download.directory.",
@@ -209,16 +209,17 @@ export async function main(
     return 0;
   }
 
-  if (options.uploadToBitable && (!options.feishuAppId || !options.feishuAppSecret)) {
+  if (options.uploadToBitable && !options.feishuAppId) {
     const dotenvVars = await loadDotenv();
     options.feishuAppId ??= dotenvVars.FEISHU_APP_ID;
     options.feishuAppSecret ??= dotenvVars.FEISHU_APP_SECRET;
-    if (!options.feishuAppId || !options.feishuAppSecret) {
+    if (!options.feishuAppId) {
       logger.error(
-        "--upload-to-bitable requires Feishu credentials. Provide via:\n" +
-          "  1. .env file (FEISHU_APP_ID / FEISHU_APP_SECRET)\n" +
-          "  2. Environment variables (FEISHU_APP_ID / FEISHU_APP_SECRET)\n" +
-          "  3. CLI flags (--feishu-app-id / --feishu-app-secret)",
+        "--upload-to-bitable requires FEISHU_APP_ID. Provide via:\n" +
+          "  1. .env file (FEISHU_APP_ID)\n" +
+          "  2. Environment variable (FEISHU_APP_ID)\n" +
+          "  3. CLI flag (--feishu-app-id)\n" +
+          "Authentication is handled by lark-cli (must be configured).",
       );
       return 1;
     }
@@ -294,8 +295,7 @@ export async function main(
 
         if (
           options.uploadToBitable &&
-          options.feishuAppId &&
-          options.feishuAppSecret
+          options.feishuAppId
         ) {
           const uploadResult = await uploadToBitable(
             records,
