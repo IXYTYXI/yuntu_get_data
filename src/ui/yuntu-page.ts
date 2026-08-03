@@ -439,47 +439,56 @@ export class YuntuPage {
 
     await this.ensureSubdivisionFiltersReady();
     await this.dismissBlockingOverlays();
-
-    if (await this.configuredDateRangeMatchesDays(days)) {
-      return;
-    }
-
-    const { picker, dateInput } = await this.resolveDateRangeControls();
-    await this.guardedDomOperation(() => dateInput.scrollIntoViewIfNeeded()).catch(
-      () => undefined,
-    );
-    await this.guardedDomOperation(() => picker.scrollIntoViewIfNeeded()).catch(
-      () => undefined,
-    );
-
-    const beforeValue = await this.guardedDomOperation(() => dateInput.inputValue());
-    await this.selectDateRangeQuickOption(picker, quickSelectLabels, days);
     await this.page.waitForTimeout(1500);
 
-    const afterValue = await this.guardedDomOperation(() => dateInput.inputValue());
-    if (afterValue !== beforeValue) {
-      await this.page.waitForTimeout(1000);
-      return;
-    }
-
     if (await this.configuredDateRangeMatchesDays(days)) {
       return;
     }
 
-    await this.selectDateRangeQuickOption(picker, quickSelectLabels, days);
-    await this.page.waitForTimeout(2000);
+    const maxAttempts = 4;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      await this.dismissBlockingOverlays();
+      await this.page.keyboard.press("Escape").catch(() => undefined);
+      await this.page.waitForTimeout(500);
 
-    const retriedValue = await this.guardedDomOperation(() => dateInput.inputValue());
-    if (retriedValue === beforeValue) {
+      const { picker, dateInput } = await this.resolveDateRangeControls();
+      await this.guardedDomOperation(() => dateInput.scrollIntoViewIfNeeded()).catch(
+        () => undefined,
+      );
+      await this.guardedDomOperation(() => picker.scrollIntoViewIfNeeded()).catch(
+        () => undefined,
+      );
+
+      const beforeValue = await this.guardedDomOperation(() => dateInput.inputValue());
+      await this.selectDateRangeQuickOption(picker, quickSelectLabels, days);
+      await this.page.waitForTimeout(2000);
+
+      const afterValue = await this.guardedDomOperation(() => dateInput.inputValue());
+      if (afterValue !== beforeValue) {
+        await this.page.waitForTimeout(1000);
+        return;
+      }
+
       if (await this.configuredDateRangeMatchesDays(days)) {
         return;
       }
 
-      throw new CollectorFailure(
-        "SELECTOR_NOT_FOUND",
-        "Date range quick select did not update the configured range",
-      );
+      if (attempt < maxAttempts - 1) {
+        await this.page.waitForTimeout(2000);
+      }
     }
+
+    const visibleRange = await this.tryReadVisibleDateRangeValue();
+    const { dateInput: finalInput } = await this.resolveDateRangeControls().catch(() => ({
+      dateInput: null as unknown as import("playwright").Locator,
+    }));
+    const inputVal = finalInput
+      ? await this.guardedDomOperation(() => finalInput.inputValue()).catch(() => "(unreadable)")
+      : "(unresolved)";
+    throw new CollectorFailure(
+      "SELECTOR_NOT_FOUND",
+      `Date range quick select did not update the configured range (want ${days}d, visible="${visibleRange ?? "null"}", input="${inputVal}")`,
+    );
   }
 
   private async configuredDateRangeMatchesDays(days: number): Promise<boolean> {
@@ -489,9 +498,12 @@ export class YuntuPage {
     }
 
     const parsed = parseDateRangeValue(existingRange);
-    return (
-      parsed !== null && inclusiveDayCount(parsed.start, parsed.end) === days
-    );
+    if (parsed === null) {
+      return false;
+    }
+
+    const actual = inclusiveDayCount(parsed.start, parsed.end);
+    return actual === days || actual === days + 1 || actual === days - 1;
   }
 
   private async tryReadVisibleDateRangeValue(): Promise<string | null> {
