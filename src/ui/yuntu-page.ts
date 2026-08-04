@@ -706,6 +706,14 @@ export class YuntuPage {
     await this.ensureSubdivisionFiltersReady();
 
     const row = this.subdivisionFilterRow();
+
+    const triggerText = await this.guardedDomOperation(() =>
+      row.innerText(),
+    ).catch(() => "");
+    if (triggerText.includes(label)) {
+      return;
+    }
+
     const trigger =
       this.selectors.extractionMethodTrigger === undefined
         ? this.subdivisionSelectTrigger(row, "截取方式").or(
@@ -720,13 +728,29 @@ export class YuntuPage {
     await this.clickVisible(trigger, "extraction method trigger");
     await this.page.waitForTimeout(600);
 
-    const option = this.page
+    const popover = this.page
       .locator(".content-ecom-select-popover-show, .content-ecom-popover-show")
-      .last()
-      .getByText(label, { exact: true })
-      .first();
-    await this.clickVisible(option, "extraction method option");
-    await this.page.waitForTimeout(2000);
+      .last();
+
+    const exactOption = popover.getByText(label, { exact: true }).first();
+    if (await exactOption.isVisible().catch(() => false)) {
+      await this.guardedDomOperation(() => exactOption.click());
+      await this.page.waitForTimeout(2000);
+      return;
+    }
+
+    const partialOption = popover.getByText(label).first();
+    if (await partialOption.isVisible().catch(() => false)) {
+      await this.guardedDomOperation(() => partialOption.click());
+      await this.page.waitForTimeout(2000);
+      return;
+    }
+
+    await this.page.keyboard.press("Escape").catch(() => undefined);
+    throw new CollectorFailure(
+      "SELECTOR_NOT_FOUND",
+      `Extraction method "${label}" not found in popover`,
+    );
   }
 
   async searchCompetitorBrands(brandNames: readonly string[]): Promise<void> {

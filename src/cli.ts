@@ -403,7 +403,12 @@ async function collectMaterialsWithCriteria(
   }
   if (criteria.extractionMethodLabel !== undefined) {
     logger.log("[yuntu] Setting extraction method...");
-    await yuntuPage.applyExtractionMethod(criteria.extractionMethodLabel);
+    try {
+      await yuntuPage.applyExtractionMethod(criteria.extractionMethodLabel);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      logger.log(`[yuntu] 截取方式设置跳过（使用页面默认值）: ${msg.slice(0, 120)}`);
+    }
   }
 
   const brandSelectionMode = criteria.brandSelectionMode ?? "sequential";
@@ -411,7 +416,13 @@ async function collectMaterialsWithCriteria(
 
   if (brandSelectionMode === "combined") {
     logger.log("[yuntu] Selecting brands (combined)...");
-    await yuntuPage.searchCompetitorBrands(criteria.brands);
+    try {
+      await yuntuPage.searchCompetitorBrands(criteria.brands);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      logger.log(`[yuntu] 品牌选择失败，跳过: ${msg.slice(0, 120)}`);
+      return records;
+    }
     const rows = filterVideoListRows(await readVideoListRows(page), {
       minExposure: criteria.minExposure,
       minThreeSecondCompletionRate: criteria.minThreeSecondCompletionRate,
@@ -421,18 +432,23 @@ async function collectMaterialsWithCriteria(
 
     logger.log(`[yuntu] Collecting ${rows.length} material(s)...`);
     for (const row of rows) {
-      records.push(
-        await collectMaterial(
-          page,
-          yuntuPage,
-          config,
-          row.rowIndex,
-          dryRun,
-          dryRun ? undefined : new BrowserVideoDownloader(page, config.download),
-          inferBrandNameFromTitle(row.title, criteria.brands),
-          row,
-        ),
-      );
+      try {
+        records.push(
+          await collectMaterial(
+            page,
+            yuntuPage,
+            config,
+            row.rowIndex,
+            dryRun,
+            dryRun ? undefined : new BrowserVideoDownloader(page, config.download),
+            inferBrandNameFromTitle(row.title, criteria.brands),
+            row,
+          ),
+        );
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        logger.log(`[yuntu] 素材采集跳过第${row.rowIndex}行: ${msg.slice(0, 120)}`);
+      }
     }
 
     return records;
@@ -440,7 +456,13 @@ async function collectMaterialsWithCriteria(
 
   for (const brandName of criteria.brands) {
     logger.log(`[yuntu] Selecting brand: ${brandName}...`);
-    await yuntuPage.searchCompetitorBrand(brandName);
+    try {
+      await yuntuPage.searchCompetitorBrand(brandName);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      logger.log(`[yuntu] 品牌 "${brandName}" 选择失败，跳过: ${msg.slice(0, 120)}`);
+      continue;
+    }
     const rows = filterVideoListRows(await readVideoListRows(page), {
       minExposure: criteria.minExposure,
       minThreeSecondCompletionRate: criteria.minThreeSecondCompletionRate,
@@ -450,18 +472,23 @@ async function collectMaterialsWithCriteria(
 
     logger.log(`[yuntu] Collecting ${rows.length} material(s) for ${brandName}...`);
     for (const row of rows) {
-      records.push(
-        await collectMaterial(
-          page,
-          yuntuPage,
-          config,
-          row.rowIndex,
-          dryRun,
-          dryRun ? undefined : new BrowserVideoDownloader(page, config.download),
-          brandName,
-          row,
-        ),
-      );
+      try {
+        records.push(
+          await collectMaterial(
+            page,
+            yuntuPage,
+            config,
+            row.rowIndex,
+            dryRun,
+            dryRun ? undefined : new BrowserVideoDownloader(page, config.download),
+            brandName,
+            row,
+          ),
+        );
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        logger.log(`[yuntu] 素材采集跳过 ${brandName} 第${row.rowIndex}行: ${msg.slice(0, 120)}`);
+      }
     }
   }
 
