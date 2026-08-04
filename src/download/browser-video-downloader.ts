@@ -54,7 +54,7 @@ export class BrowserVideoDownloader implements VideoDownloader {
 
       return {
         state: "downloaded",
-        path: path.relative(this.rootDir, outputPath),
+        path: path.relative(this.rootDir, outputPath).split(path.sep).join("/"),
       };
     } catch {
       return {

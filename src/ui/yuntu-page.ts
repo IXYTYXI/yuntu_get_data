@@ -1031,28 +1031,81 @@ export class YuntuPage {
       .last();
     await this.waitForVisible(popover, "specified brand filter popover");
 
-    if (this.selectors.subdivisionBrandSearchInput !== undefined) {
-      const searchInput = popover
-        .locator(this.selectors.subdivisionBrandSearchInput)
-        .first();
-      await this.waitForVisible(searchInput, "specified brand search input");
-      await this.guardedDomOperation(async () => {
-        await searchInput.fill("");
-        await searchInput.fill(brandName);
-      });
-      await this.page.waitForTimeout(800);
-    } else {
-      const genericSearch = popover.locator("input").first();
-      if (await genericSearch.isVisible().catch(() => false)) {
-        await genericSearch.fill(brandName);
-        await this.page.waitForTimeout(800);
-      }
-    }
+    const searchInput = await this.findBrandSearchInput(popover);
+    await this.guardedDomOperation(async () => {
+      await searchInput.fill("");
+      await searchInput.fill(brandName);
+    });
 
-    const option = popover.getByText(brandName, { exact: true }).first();
+    await this.waitForBrandSearchResult(popover, brandName);
+
+    const option = popover.getByText(brandName, { exact: true }).first()
+      .or(popover.getByText(brandName).first());
     await this.clickVisible(option, "specified brand option");
     await this.page.keyboard.press("Escape").catch(() => undefined);
     await this.page.waitForTimeout(1200);
+  }
+
+  private async findBrandSearchInput(popover: Locator): Promise<Locator> {
+    if (this.selectors.subdivisionBrandSearchInput !== undefined) {
+      const configured = popover
+        .locator(this.selectors.subdivisionBrandSearchInput)
+        .first();
+      if (await configured.isVisible().catch(() => false)) {
+        return configured;
+      }
+    }
+
+    const searchSelectors = [
+      'input[type="search"]',
+      'input[placeholder*="搜索"]',
+      'input[placeholder*="search" i]',
+      'input[placeholder*="品牌"]',
+      '.content-ecom-input input',
+      'input',
+    ];
+
+    for (const selector of searchSelectors) {
+      const candidate = popover.locator(selector).first();
+      if (await candidate.isVisible().catch(() => false)) {
+        return candidate;
+      }
+    }
+
+    const pagePopoverInput = this.page
+      .locator(".content-ecom-select-popover-show input, .content-ecom-popover-show input")
+      .first();
+    if (await pagePopoverInput.isVisible().catch(() => false)) {
+      return pagePopoverInput;
+    }
+
+    throw new CollectorFailure(
+      "SELECTOR_NOT_FOUND",
+      "Brand search input not found in popover; configure selectors.subdivisionBrandSearchInput or check page structure",
+    );
+  }
+
+  private async waitForBrandSearchResult(
+    popover: Locator,
+    brandName: string,
+  ): Promise<void> {
+    const maxWaitMs = 5000;
+    const pollMs = 500;
+    const deadline = Date.now() + maxWaitMs;
+
+    while (Date.now() < deadline) {
+      await this.page.waitForTimeout(pollMs);
+      const option = popover.getByText(brandName, { exact: true }).first()
+        .or(popover.getByText(brandName).first());
+      if (await option.isVisible().catch(() => false)) {
+        return;
+      }
+    }
+
+    throw new CollectorFailure(
+      "SELECTOR_NOT_FOUND",
+      `Brand "${brandName}" not found in search results after ${maxWaitMs}ms`,
+    );
   }
 
   private async selectSpecifiedBrandInSubdivisionFilter(
