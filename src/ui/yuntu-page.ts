@@ -30,7 +30,7 @@ const TARGET_PAGE_SELECTION_FAILURE_MESSAGE =
   "Sign in to Yuntu in the debugging Chrome window and select a Yuntu tab";
 const TRUSTED_YUNTU_ORIGIN = "https://yuntu.oceanengine.com";
 const VISIBLE_DATE_RANGE_TEXT_PATTERN =
-  /\d{4}-\d{2}-\d{2}\s*[~～]\s*\d{4}-\d{2}-\d{2}/;
+  /\d{4}-\d{2}-\d{2}\s*[~～〜∼]\s*\d{4}-\d{2}-\d{2}/;
 
 export function isTrustedYuntuOrigin(location: string): boolean {
   try {
@@ -441,26 +441,24 @@ export class YuntuPage {
     await this.dismissBlockingOverlays();
     await this.page.waitForTimeout(1500);
 
-    if (await this.configuredDateRangeMatchesDays(days)) {
+    if (await this.dateRangeAlreadyMatchesDays(days)) {
       return;
     }
 
-    const maxAttempts = 4;
+    const maxAttempts = 3;
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      await this.dismissBlockingOverlays();
       await this.page.keyboard.press("Escape").catch(() => undefined);
-      await this.page.waitForTimeout(500);
+      await this.page.waitForTimeout(800);
+      await this.dismissBlockingOverlays();
 
       const { picker, dateInput } = await this.resolveDateRangeControls();
       await this.guardedDomOperation(() => dateInput.scrollIntoViewIfNeeded()).catch(
         () => undefined,
       );
-      await this.guardedDomOperation(() => picker.scrollIntoViewIfNeeded()).catch(
-        () => undefined,
-      );
 
       const beforeValue = await this.guardedDomOperation(() => dateInput.inputValue());
       await this.selectDateRangeQuickOption(picker, quickSelectLabels, days);
+      await this.page.keyboard.press("Escape").catch(() => undefined);
       await this.page.waitForTimeout(2000);
 
       const afterValue = await this.guardedDomOperation(() => dateInput.inputValue());
@@ -469,7 +467,7 @@ export class YuntuPage {
         return;
       }
 
-      if (await this.configuredDateRangeMatchesDays(days)) {
+      if (await this.dateRangeAlreadyMatchesDays(days)) {
         return;
       }
 
@@ -478,17 +476,45 @@ export class YuntuPage {
       }
     }
 
-    const visibleRange = await this.tryReadVisibleDateRangeValue();
-    const { dateInput: finalInput } = await this.resolveDateRangeControls().catch(() => ({
-      dateInput: null as unknown as import("playwright").Locator,
-    }));
-    const inputVal = finalInput
-      ? await this.guardedDomOperation(() => finalInput.inputValue()).catch(() => "(unreadable)")
-      : "(unresolved)";
     throw new CollectorFailure(
       "SELECTOR_NOT_FOUND",
-      `Date range quick select did not update the configured range (want ${days}d, visible="${visibleRange ?? "null"}", input="${inputVal}")`,
+      "Date range quick select did not update the configured range",
     );
+  }
+
+  private async dateRangeAlreadyMatchesDays(days: number): Promise<boolean> {
+    if (await this.configuredDateRangeMatchesDays(days)) {
+      return true;
+    }
+
+    const pattern = dateRangeQuickSelectPattern(days);
+    if (pattern === null) {
+      return false;
+    }
+
+    const searchRoots: Array<Page | Frame> = [
+      this.contentRoot(),
+      this.page,
+      ...this.page.frames(),
+    ];
+
+    for (const root of searchRoots) {
+      const basicFilter = root
+        .locator("div, section, form")
+        .filter({ hasText: /基础\s*筛选/ })
+        .first();
+      if (!(await basicFilter.isVisible().catch(() => false))) {
+        continue;
+      }
+      const filterText = await this.guardedDomOperation(() =>
+        basicFilter.innerText(),
+      ).catch(() => "");
+      if (pattern.test(filterText)) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   private async configuredDateRangeMatchesDays(days: number): Promise<boolean> {

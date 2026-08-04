@@ -42,7 +42,7 @@ export function dateRangeQuickSelectPattern(days: number): RegExp | null {
 export function normalizeDateRangeDisplay(value: string): string | null {
   const match = value
     .trim()
-    .match(/^(\d{4}-\d{2}-\d{2})\s*[~～]\s*(\d{4}-\d{2}-\d{2})$/);
+    .match(/^(\d{4}-\d{2}-\d{2})\s*[~～〜∼]\s*(\d{4}-\d{2}-\d{2})$/);
   if (match === null) {
     return null;
   }
@@ -54,7 +54,7 @@ export function parseDateRangeValue(
   value: string,
 ): { start: Date; end: Date } | null {
   const normalized = normalizeDateRangeDisplay(value) ?? value.trim();
-  const match = normalized.match(/^(\d{4}-\d{2}-\d{2})\s*~\s*(\d{4}-\d{2}-\d{2})$/);
+  const match = normalized.match(/^(\d{4}-\d{2}-\d{2})\s*[~～〜∼]\s*(\d{4}-\d{2}-\d{2})$/);
   if (match === null) {
     return null;
   }
