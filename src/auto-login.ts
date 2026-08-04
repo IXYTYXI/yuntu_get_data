@@ -23,10 +23,28 @@ export async function tryAutoLogin(
   const page = await context.newPage();
   logger.log(`[yuntu] 正在打开登录页面...`);
 
-  await page.goto(credentials.url, {
-    waitUntil: "domcontentloaded",
-    timeout: 30_000,
-  });
+  const MAX_GOTO_ATTEMPTS = 3;
+  for (let attempt = 1; attempt <= MAX_GOTO_ATTEMPTS; attempt++) {
+    try {
+      await page.goto(credentials.url, {
+        waitUntil: "domcontentloaded",
+        timeout: 60_000,
+      });
+      break;
+    } catch (err) {
+      if (attempt === MAX_GOTO_ATTEMPTS) {
+        await page.close();
+        throw new CollectorFailure(
+          "AUTH_REQUIRED",
+          `登录页面加载超时（重试${MAX_GOTO_ATTEMPTS}次），请检查网络连接或手动登录`,
+        );
+      }
+      logger.log(
+        `[yuntu] 登录页面加载超时，重试 (${attempt}/${MAX_GOTO_ATTEMPTS})...`,
+      );
+      await page.waitForTimeout(2000);
+    }
+  }
   await page.waitForTimeout(3000);
 
   const currentUrl = page.url();
