@@ -395,7 +395,12 @@ async function collectMaterialsWithCriteria(
 
   const records: MaterialRecord[] = [];
   logger.log("[yuntu] Setting date range...");
-  await yuntuPage.applyDateRangeDays(criteria.dateRangeDays);
+  try {
+    await yuntuPage.applyDateRangeDays(criteria.dateRangeDays);
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    logger.log(`[yuntu] 日期范围设置跳过（使用页面默认值）: ${msg.slice(0, 120)}`);
+  }
   if (criteria.extractionMethodLabel !== undefined) {
     logger.log("[yuntu] Setting extraction method...");
     await yuntuPage.applyExtractionMethod(criteria.extractionMethodLabel);

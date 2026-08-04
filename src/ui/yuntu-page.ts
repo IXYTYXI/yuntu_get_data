@@ -514,6 +514,29 @@ export class YuntuPage {
       }
     }
 
+    for (const root of searchRoots) {
+      const quickSelectBtn = root
+        .locator("span, button, div, a")
+        .filter({ hasText: pattern })
+        .first();
+      if (await quickSelectBtn.isVisible().catch(() => false)) {
+        const btnText = await this.guardedDomOperation(() =>
+          quickSelectBtn.innerText(),
+        ).catch(() => "");
+        if (pattern.test(btnText) && btnText.length < 20) {
+          return true;
+        }
+      }
+    }
+
+    const bodyText = await this.page
+      .locator("body")
+      .innerText()
+      .catch(() => "");
+    if (pattern.test(bodyText) && VISIBLE_DATE_RANGE_TEXT_PATTERN.test(bodyText)) {
+      return true;
+    }
+
     return false;
   }
 
